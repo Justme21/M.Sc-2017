@@ -83,6 +83,7 @@ def maxState(w,particle_dict):
 
 #Locations and storage variables
 folder_loc = "Datasets/UAH-DRIVESET-v1/D2/20151120133502-26km-D2-AGGRESSIVE-MOTORWAY/"
+#folder_loc = "Datasets/UAH_DRIVESET-v1/D3/20151126110502-26km-D3-NORMAL-MOTORWAY"
 files_of_interest = ["RAW_ACCELEROMETERS","PROC_LANE_DETECTION","PROC_VEHICLE_DETECTION"]
 entries_of_interest = [[0,1,2,3,4],[0,1,3,4],[0,1,2,3,4]]
 
@@ -116,6 +117,10 @@ accel_chng = [0]+[prp_accel[i]-prp_accel[i-1] for i in range(1,len(prp_accel))]
 
 time_length = min(len(prp_accel),len(Z)) #There are a different number of entries in each array
 
+###NOTE: While this all works fine in theory, in practise the datasets used tend to have missing/
+# incorrect values. In the dataset this is represented by a 0 in the last column of the Lane Data
+# The issue is that during this time the accelerometer readings are unaffected, but the Z values 
+# revert to 0, and the road_width is also incorrect. I have not yet decided how to resolve this
 mean_accel = sum(prp_accel)/len(prp_accel)
 std_dev_accel = math.sqrt((1.0/(len(prp_accel)-1))*sum([(x-mean_accel)**2 for x in prp_accel]))
 
@@ -123,7 +128,7 @@ mean_Z = sum(Z)/len(Z)
 std_dev_Z = math.sqrt((1.0/(len(Z)-1))*sum([(x-mean_Z)**2 for x in Z]))
 
 
-n = 400
+n = 50 #This is probably too many particles, but it works
 w_old = [(i+1)*1.0/n for i in range(n)]
 w_new = [_ for _ in range(n)]
 particle_dict_old = {}
@@ -131,12 +136,9 @@ particle_dict_new = {}
 rand_val = None
 state = None
 state_path = []
+
 for i in range(n):
-    rand_val = random.random()
-    if rand_val<.15 : state = "L"
-    elif rand_val>.85: state = "R"
-    else: state = "F"
-    particle_dict_old[i] = state
+    particle_dict_old[i] = "F"
 
 for t in range(time_length):
     w_norm = 0
