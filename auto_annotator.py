@@ -13,9 +13,12 @@ class DataStore():
         for entry in op_file: #Iterate through the rows in the file
             #We only include the entries corresponding to the 0-indexed columns specified in content_list
             entry = [float(x) for i,x in enumerate(entry.split()) if i in content_list]
-            self.file_content.append(entry)
+            
+            if -9.0 not in entry:
+                self.file_content.append(entry)
 
         self.index = 0 #Initialise the index to 0
+        self.time = self.file_content[0][0]
 
     def getAll(self,i):
         tot_list = []
@@ -24,6 +27,13 @@ class DataStore():
                 tot_list.append(row[i])
 
         return tot_list
+
+    def advance(self):
+        self.index+=1
+        if self.index>=len(self.file_content): self.index = None
+        else:
+            self.time = self.file_content[self.index][0]
+
 
 
 def sampleFromDist(x_t_1,accel,chng,mean,std_dev):
@@ -82,6 +92,19 @@ def maxState(w,particle_dict):
     #return count_dict
     return (max_state,cur_max)
 
+
+def advanceAll(source_list):
+    index_list = []
+    for source in source_list:
+        source.advance()
+    cur_time = max(source.time for source in source_list)
+    for source in source_list:
+        while source.time<cur_time and source.index!=None:
+            source.advance()
+        index_list.append(source.index)
+    return index_list
+
+
 #Locations and storage variables
 folder_loc = "Datasets/UAH-DRIVESET-v1/D2/20151120133502-26km-D2-AGGRESSIVE-MOTORWAY/"
 #folder_loc = "Datasets/UAH_DRIVESET-v1/D3/20151126110502-26km-D3-NORMAL-MOTORWAY"
@@ -91,9 +114,10 @@ entries_of_interest = [[0,1,2,3,4],[0,1,3,4],[0,1,2,3,4]]
 
 #Creating a list with access to all the data_folders we are interested in
 datastore_dict = {}
+datastore_list = []
 for i, entry in enumerate(files_of_interest):
     datastore_dict[entry] = DataStore("{0}{1}.txt".format(folder_loc,entry),entries_of_interest[i])
-
+    datastore_list.append(datastore_dict[entry])
 
 ###NOTE: Here we are assuming that the values observed are simultaneous
 ###      i.e. we assume that the i^th entry in Z is the position observed in the same
@@ -106,17 +130,9 @@ data_qual = datastore_dict["PROC_LANE_DETECTION"].getAll(3)
 
 car_width = 1.75 #given in metres
 
-time_1 = datastore_dict["RAW_ACCELEROMETERS"].getAll(0)
-time_2 = datastore_dict["PROC_LANE_DETECTION"].getAll(0)
-
-a = 0
-while time_1[a+1]<time_2[0]: a+= 1
-
-prp_accel = [9.81* x for x in prp_accel[a:]] #Translating this to m/s for common units
+prp_accel = [9.81 * x for x in prp_accel] #Translating this to m/s for common units
 accel_chng = [0]+[prp_accel[i]-prp_accel[i-1] for i in range(1,len(prp_accel))]
 
-
-time_length = min(len(prp_accel),len(Z)) #There are a different number of entries in each array
 
 ###NOTE: While this all works fine in theory, in practise the datasets used tend to have missing/
 # incorrect values. In the dataset this is represented by a 0 in the last column of the Lane Data
@@ -141,15 +157,16 @@ state_path = []
 for i in range(n):
     particle_dict_old[i] = "F"
 
-for t in range(time_length):
+while None not in advanceAll(datastore_list):
     w_norm = 0
+    t = [source.index for source in datastore_list]
     for i in range(n):
         rand_val = random.random()
         j = 0
         while w_old[j]<rand_val: j += 1
         x_t_1 = particle_dict_old[j]
-        x_t = sampleFromDist(x_t_1,prp_accel[t],accel_chng[t],mean_accel,std_dev_accel)
-        w_new[i] = probFromDist(Z[t],x_t,mean_Z,std_dev_Z,road_width[t],car_width)
+        x_t = sampleFromDist(x_t_1,prp_accel[t[0]],accel_chng[t[0]],mean_accel,std_dev_accel)
+        w_new[i] = probFromDist(Z[t[1]],x_t,mean_Z,std_dev_Z,road_width[t[1]],car_width)
         w_norm += w_new[i]
         particle_dict_new[i] = x_t
 
@@ -163,5 +180,8 @@ for t in range(time_length):
     w_old = list(w_new)
     particle_dict_new = {}
     w_new = [_ for _ in range(n)]
-    if data_qual[t] in {0,-9}: print("*"),
-    print("{}:{:02d} ({}) \t {}".format(int(time_1[a+t]/60),int(time_1[a+t]%60),time_1[a+t],maxState(w_old,particle_dict_old)))
+    time = max([source.time for source in datastore_list])
+    if data_qual[t[1]] in {0,-9}: print("*"),
+    print("{}:{:02d} ({}) \t {}".format(int(time/60),int(time%60),time,maxState(w_old,particle_dict_old)))
+
+    

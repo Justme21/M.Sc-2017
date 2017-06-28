@@ -1,5 +1,7 @@
 #!/usr/bin/python
 
+import math
+
 class DataStore():
 
     def __init__(self,file_name,content_list):
@@ -43,9 +45,9 @@ class ChangeLearner():
 
         self.gradient = .1
 
-        self.action_list = ["L","F","R"]
+        self.action_list = ["F","L","R"]
         self.action_dict = {}
-        for act in self.action_list: self.action_dict[act] = [0 for _ in range(len(prev_state))]
+        for act in self.action_list: self.action_dict[act] = [0 for _ in range(len(self.cur_state))]
 
 
     def updateState(self,new_state):
@@ -53,13 +55,38 @@ class ChangeLearner():
         self.cur_state = new_state
 
 
+    def learn(self,action,difference):
+        for i,entry in enumerate(difference):
+            self.action_dict[action][i] += self.gradient*entry
+
+
     def getAction(self):
         diff_mags = [0 for _ in range(len(self.action_list))]
         
-        state_diff = [cur_state[i]-prev_state[i] for i in range(len(cur_state))]
+        state_diff = [self.cur_state[i]-self.prev_state[i] for i in range(len(self.cur_state))]
         for i,action in enumerate(self.action_list):
-            
+            for j,entry in enumerate(state_diff): 
+                diff_mags[i]+= math.fabs(entry - self.action_dict[action][j])
+        
+        min_mag = min(diff_mags)
+        min_ind = diff_mags.index(min_mag)
+        min_action = self.action_list[min_ind]
 
+        self.learn(min_action,state_diff)
+
+        return min_action 
+
+
+def advanceAll(source_list):
+    index_list = []
+    for source in source_list:
+        source.advance()
+    cur_time = max(source.time for source in source_list)
+    for source in source_list:
+        while source.time<cur_time and source.index!=None:
+            source.advance()
+    index_list.append(source.index)
+    return index_list
 
 #Locations and storage variables
 folder_loc = "Datasets/UAH-DRIVESET-v1/D2/20151120133502-26km-D2-AGGRESSIVE-MOTORWAY/"
@@ -78,16 +105,24 @@ for entry in files_of_interest:
     while datastore_dict[entry].time<start_time: datastore_dict[entry].advance()
 datasource_list = [datastore_dict[entry] for entry in files_of_interest]
 
-time = 0
+time = []
 action = None
+new_state = None
 
-learner = ChangeLearner([source.getRow() for source in datasource_list])
+state_len = 0
+for source in datasource_list:
+    state_len += len(source.getRow())
+
+
+learner = ChangeLearner([0 for _ in range(state_len)])
 while None not in advanceAll(datasource_list):
-    new_state = [source.getRow() for source in datasource_list]
-    time = datasource_list[0].time
+    new_state = []
+    for source in datasource_list:
+        new_state += source.getRow()
+    time = max([source.time for source in datasource_list])
    
     learner.updateState(new_state)
     action = learner.getAction()
 
-    print("{}:{} \t {}".format(int(time/60),int(time%60),action))
+    print("{}:{:02d} ({}) \t {}".format(int(time/60),int(time%60),time,action))
 
