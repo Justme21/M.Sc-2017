@@ -79,6 +79,7 @@ def maxState(w,particle_dict):
             cur_max = count_dict[entry]
             max_state = entry
     
+    #return count_dict
     return (max_state,cur_max)
 
 #Locations and storage variables
