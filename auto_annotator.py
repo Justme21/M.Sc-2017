@@ -43,7 +43,6 @@ def sampleFromDist(x_t_1,accel,chng,mean,std_dev):
         # chng negative => e^-chng has large value for change of small magnitude
         # and small value for large magnitude. Thus for small changes its is unlikely we
         # are still going left, and for large changes it is very likely
-    #    print("{}\t{}\t{}".format(rnd_val,chng,math.e**(lmda*chng)))
         if rnd_val<1-2/(math.e**(k*(-chng))+1): return "L"
         else: return "F"
     elif x_t_1 == "R":
@@ -88,8 +87,8 @@ def maxState(w,particle_dict):
         if count_dict[entry]>cur_max:
             cur_max = count_dict[entry]
             max_state = entry
-    
-    #return count_dict
+   
+    #return count_dict 
     return (max_state,cur_max)
 
 

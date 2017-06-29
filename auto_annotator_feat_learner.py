@@ -43,11 +43,14 @@ class ChangeLearner():
         self.prev_state = None
         self.cur_state = sample_state
 
-        self.gradient = .1
+        self.gradient = .01
+        self.gamma = .95
 
         self.action_list = ["F","L","R"]
         self.action_dict = {}
         for act in self.action_list: self.action_dict[act] = [0 for _ in range(len(self.cur_state))]
+
+        #Here we are going to use our knowledge of the current structure of the state to try and influence 
 
 
     def updateState(self,new_state):
@@ -57,7 +60,7 @@ class ChangeLearner():
 
     def learn(self,action,difference):
         for i,entry in enumerate(difference):
-            self.action_dict[action][i] += self.gradient*entry
+            self.action_dict[action][i] += self.gradient*(self.gamma*entry-self.action_dict[action][i])
 
 
     def getAction(self):
@@ -74,7 +77,10 @@ class ChangeLearner():
 
         self.learn(min_action,state_diff)
 
-        return min_action 
+        return min_action,min_mag
+
+    def whatDoYouKnow(self):
+        return self.action_dict
 
 
 def advanceAll(source_list):
@@ -122,7 +128,14 @@ while None not in advanceAll(datasource_list):
     time = max([source.time for source in datasource_list])
    
     learner.updateState(new_state)
-    action = learner.getAction()
+    action,mag = learner.getAction()
 
-    print("{}:{:02d} ({}) \t {}".format(int(time/60),int(time%60),time,action))
+    print("{}:{:02d} ({}) \t {}\t{}".format(int(time/60),int(time%60),time,action,mag))
 
+print("\n What the Learner Learnt:")
+learnt_dict = learner.whatDoYouKnow()
+learnt_list = None
+for direc in learnt_dict:
+    learnt_list = learnt_dict[direc]
+    learnt_list = [round(x,3) for x in learnt_list]
+    print("{}: {}".format(direc,learnt_list))
