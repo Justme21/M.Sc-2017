@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import math
+import random
 
 class DataStore():
 
@@ -27,8 +28,10 @@ class DataStore():
 
         return tot_list
 
+
     def getRow(self):
         return self.file_content[self.index]
+
 
     def advance(self):
         self.index+=1
@@ -37,20 +40,34 @@ class DataStore():
             self.time = self.file_content[self.index][0]
 
 
+    def rescale(self):
+        for i,entry in enumerate(self.file_content):
+            self.file_content[i] = [entry[0]]+[2.0/(1+math.exp(-.5*x)) - 1 for x in entry[1:]]
+
 class ChangeLearner():
 
     def __init__(self,sample_state):
         self.prev_state = None
         self.cur_state = sample_state
 
-        self.gradient = .01
-        self.gamma = .95
+        self.alpha = .1
+        self.gamma = .9
 
         self.action_list = ["F","L","R"]
         self.action_dict = {}
         for act in self.action_list: self.action_dict[act] = [0 for _ in range(len(self.cur_state))]
 
         #Here we are going to use our knowledge of the current structure of the state to try and influence 
+        #We know right should tend to be positve prp-acceleration and left negative. By intitialising these
+        #Values towards that direction we make it more likely they will be selected
+        random.seed(270394)
+        self.action_dict["R"][3] = math.fabs(random.random())
+        self.action_dict["L"][3] = -math.fabs(random.random())
+
+        #Variables for the time dilation
+        self.capacity = 50
+        self.num_reps = 100
+        self.entry_window = []
 
 
     def updateState(self,new_state):
@@ -60,7 +77,7 @@ class ChangeLearner():
 
     def learn(self,action,difference):
         for i,entry in enumerate(difference):
-            self.action_dict[action][i] += self.gradient*(self.gamma*entry-self.action_dict[action][i])
+            self.action_dict[action][i] += self.alpha*(self.gamma*entry-self.action_dict[action][i])
 
 
     def getAction(self):
@@ -76,8 +93,19 @@ class ChangeLearner():
         min_action = self.action_list[min_ind]
 
         self.learn(min_action,state_diff)
-
+        
+        self.entry_window.append((min_action,state_diff))
+        if len(self.entry_window) == self.capacity:
+            action,diff = None, None
+            for _ in range(self.num_reps):
+                index_list = [random.randint(0,self.capacity-1) for _ in range(self.capacity)]
+                for index in index_list:
+                    (action,diff) = self.entry_window[index]
+                    self.learn(action,diff)
+            self.entry_window = [] 
+        
         return min_action,min_mag
+
 
     def whatDoYouKnow(self):
         return self.action_dict
@@ -111,20 +139,30 @@ for entry in files_of_interest:
     while datastore_dict[entry].time<start_time: datastore_dict[entry].advance()
 datasource_list = [datastore_dict[entry] for entry in files_of_interest]
 
+#We want the entries in the datastore to all be in common units metres
+# Accelerations are all currently in Gs
+for i in range(len(datasource_list[0].file_content)):
+    for index in [2,3,4,5,6,7]:
+        if index in entries_of_interest[0]:
+            datasource_list[0].file_content[i][entries_of_interest[0].index(index)]*= 9.81
+
+for source in datasource_list:
+    source.rescale()
+
 time = []
 action = None
 new_state = None
 
 state_len = 0
 for source in datasource_list:
-    state_len += len(source.getRow())
+    state_len += len(source.getRow()) - 1 #Don't want to include the timestamp as a state
 
 
 learner = ChangeLearner([0 for _ in range(state_len)])
 while None not in advanceAll(datasource_list):
     new_state = []
     for source in datasource_list:
-        new_state += source.getRow()
+        new_state += source.getRow()[1:] #Omitting the timestamp
     time = max([source.time for source in datasource_list])
    
     learner.updateState(new_state)
