@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import math
+import matplotlib.pyplot as plt
 import random
 
 class DataStore():
@@ -50,8 +51,11 @@ class ChangeLearner():
         self.prev_state = None
         self.cur_state = sample_state
 
-        self.alpha = .1
-        self.gamma = .9
+        self.alpha = .01
+        self.gamma = 1.0
+
+        self.epsilon = .05
+        self.num_rounds = 0
 
         self.action_list = ["F","L","R"]
         self.action_dict = {}
@@ -66,7 +70,7 @@ class ChangeLearner():
 
         #Variables for the time dilation
         self.capacity = 50
-        self.num_reps = 100
+        self.num_reps = 500
         self.entry_window = []
 
 
@@ -77,20 +81,41 @@ class ChangeLearner():
 
     def learn(self,action,difference):
         for i,entry in enumerate(difference):
-            self.action_dict[action][i] += self.alpha*(self.gamma*entry-self.action_dict[action][i])
+            self.action_dict[action][i] += (self.alpha+(1.0/self.num_rounds))*(self.gamma*entry-self.action_dict[action][i])
 
 
     def getAction(self):
+        self.num_rounds += 1     
         diff_mags = [0 for _ in range(len(self.action_list))]
         
         state_diff = [self.cur_state[i]-self.prev_state[i] for i in range(len(self.cur_state))]
         for i,action in enumerate(self.action_list):
             for j,entry in enumerate(state_diff): 
                 diff_mags[i]+= math.fabs(entry - self.action_dict[action][j])
+       
+        self.mag_list = list(diff_mags)
+
+        alt = random.random()
+        if alt<(self.epsilon+(1.0/self.num_rounds)):
+            sum_mags = sum(diff_mags)
+            for i in range(len(diff_mags)):
+                diff_mags[i]/=sum_mags
+                if i!=0: diff_mags[i]+= diff_mags[i-1]
+
+            diff_mags = [1-x for x in diff_mags]            
+
+            min_ind = len(diff_mags)-1
+            choice = random.random()
+            while choice<diff_mags[min_ind]:
+                min_ind-=1
+            min_mag = diff_mags[min_ind] 
         
-        min_mag = min(diff_mags)
-        min_ind = diff_mags.index(min_mag)
+        else:
+            min_mag = min(diff_mags)
+            min_ind = diff_mags.index(min_mag)
+        
         min_action = self.action_list[min_ind]
+
 
         self.learn(min_action,state_diff)
         
@@ -153,6 +178,8 @@ time = []
 action = None
 new_state = None
 
+plot_list = []
+
 state_len = 0
 for source in datasource_list:
     state_len += len(source.getRow()) - 1 #Don't want to include the timestamp as a state
@@ -168,6 +195,7 @@ while None not in advanceAll(datasource_list):
     learner.updateState(new_state)
     action,mag = learner.getAction()
 
+    plot_list.append(list(learner.mag_list))
     print("{}:{:02d} ({}) \t {}\t{}".format(int(time/60),int(time%60),time,action,mag))
 
 print("\n What the Learner Learnt:")
@@ -177,3 +205,12 @@ for direc in learnt_dict:
     learnt_list = learnt_dict[direc]
     learnt_list = [round(x,3) for x in learnt_list]
     print("{}: {}".format(direc,learnt_list))
+
+
+plot_1 = [entry[0] for entry in plot_list]
+plot_2 = [entry[1] for entry in plot_list]
+plot_3 = [entry[2] for entry in plot_list]
+plt.plot(plot_1,'r-')
+plt.plot(plot_2,'g-')
+plt.plot(plot_3,'b-')
+plt.show()
