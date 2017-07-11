@@ -3,6 +3,7 @@
 import math
 import matplotlib.pyplot as plt
 import numpy as np
+from pyearth import Earth
 from sklearn import decomposition,manifold,preprocessing
 from sklearn.cluster import KMeans #used to perform k-means
 from scipy.cluster.hierarchy import dendrogram, linkage
@@ -302,7 +303,7 @@ while posit<len(dataset):
     if posit+j<len(dataset) and  j==window_len: #dataset[posit+j][0]-dataset[posit][0] >= window_len:    
         #row = restructure(row,window_len)
         windowed_dataset.append([dataset[posit+j-1][0]]+row) #want to include the timestep for reference
-        posit+= int(window_len/2)#posit+=int(window_len/2) #Overlapping windows
+        posit+= int(window_len)#posit+=int(window_len/2) #Overlapping windows
     else:
         posit += j
        
@@ -314,60 +315,73 @@ dataset_np = np.array([entry[1:] for entry in windowed_dataset])
 #Scales data to have 0 mean and unit variance
 scaled_dataset = preprocessing.StandardScaler().fit_transform(dataset_np)
 
-#Plot to identify patterns in data
-#for i in range(int(len(scaled_dataset[0])/window_len)+1):
-#    roll_list = [entry[i] for entry in scaled_dataset]
-#    plt.title("This is feature {}".format(i))
-#    plt.plot(roll_list)
-#    plt.show()
+turn_times = {35:[1,0,0],83:[0,0,1],164:[1,0,0],305:[0,0,1],501:[0,0,1],513:[1,0,0]}
+turn_times.update({44:[0,1,0],75:[0,1,0],110:[0,1,0],125:[0,1,0],494:[0,1,0],525:[0,1,0]})
+turn_set = []
+turns = sorted([x for x in turn_times])
+
+for turn in turns:
+    for entry in windowed_dataset:
+        if turn>=entry[0] and turn<=entry[0]+time_width:
+            turn_set.append(entry[1:])
+            break
+
+#scaled_turn_set = preprocessing.StandardScaler().fit_transform(turn_set)
+scaled_turn_set = turn_set
+
+turn_mem = [turn_times[x] for x in turns]
+turn_mem = np.array(turn_mem)
+
+
+model1 = Earth()
+model2 = Earth()
+model3 = Earth()
+
+model1.fit(scaled_turn_set,turn_mem[:,0])
+model2.fit(scaled_turn_set,turn_mem[:,1])
+model3.fit(scaled_turn_set,turn_mem[:,2])
+
+y_hat1 = model1.predict(dataset_np)
+y_hat2 = model2.predict(dataset_np)
+y_hat3 = model3.predict(dataset_np)
+
+max_index = None
+
+for i,entry in enumerate(windowed_dataset):
+    print("{}:{:02d}-{}:{:02d}\t".format(int(entry[0]/60),int(entry[0]%60),int((entry[0]+time_width)/60),\
+          int((entry[0]+time_width)%60)),end='')
+    max_index =np.argmax([y_hat1[i],y_hat2[i],y_hat3[i]])
+    if max_index == 0:
+        print("L")
+    elif max_index == 1:
+        print("F")
+    else:
+        print("R")
+    
+
+
+exit(-1)
+
 
 
 n_comp = 2
 
-isMap = manifold.Isomap(n_neighbors = 20,n_components = n_comp)
-Y = isMap.fit_transform(scaled_dataset)
-
-t= isMap.transform(np.identity(scaled_dataset.shape[1]))
-
-
-#for i in range(n_comp):
-#    for j,entry in enumerate(t.T[i]):
-#        if j%window_len == 0: print("\n{}".format(j/window_len))
-#        print("{}: {} \t {}".format(j,entry,math.fabs(entry/sum(math.fabs(x) for x in t.T[i]))))
-#    print("\n")
+isMap = manifold.Isomap(n_neighbors = int(math.sqrt(len(scaled_turn_set))),n_components = n_comp)
+#Y = isMap.fit_transform(scaled_dataset)
+Y = isMap.fit_transform(scaled_turn_set)
 
 
 kmeans = KMeans(n_clusters=2)
 kmeans.fit(Y)
 labels = kmeans.predict(Y)
 
-A,B = [],[]
-assignment_list = []
-for i,entry in enumerate(labels):
-    if entry==0:
-        A.append(dataset_np[i])
-        assignment_list.append("A")
-    else:
-        B.append(dataset_np[i])
-        assignment_list.append("B")
+for (turn,label) in zip(turn_times,labels):
+    print("{}\t{}".format(turn,label))
 
-A = isMap.fit_transform(preprocessing.StandardScaler().fit_transform(A))
-kmeans.fit(A)
-labels_A = kmeans.predict(A)
+plt.scatter(Y[:,0],Y[:,1],c=labels.astype(np.float),cmap=plt.cm.Spectral)
+plt.show()
 
-
-B = isMap.fit_transform(preprocessing.StandardScaler().fit_transform(B))
-kmeans.fit(B)
-labels_B = kmeans.predict(B)
-
-labels_revised = []
-for entry in assignment_list:
-    if entry == "A":
-        labels_revised.append("A{}".format(labels_A[0]))
-        labels_A = labels_A[1:]
-    else:
-        labels_revised.append("B{}".format(labels_B[0]))
-        labels_B = labels_B[1:]
+exit(-1)
 
 posit = [i for i in range(len(Y))]
 
@@ -400,30 +414,3 @@ for i,entry in enumerate(labels):
     if windowed_dataset[i][0] in lc: print("(*)",end='')
     print("{}:{}".format(windowed_dataset[i][0],entry))
     print("\n")
-
-
-#Scatter plot of the value of the first PC against time
-# Labelled in the original, first pass, cluster labels
-plt.scatter(posit,Y[:,0],c=labels.astype(np.float),cmap=plt.cm.Spectral)
-plt.title("The value of the first PC over time")
-plt.show()
-
-#Scatter plot of first PC vesrus second PC
-plt.scatter(Y[:,0],Y[:,1],c=labels.astype(np.float),cmap=plt.cm.Spectral)
-plt.title("PC plot au-naturale")
-plt.show()
-
-
-
-#printable = True
-#for i in range(len(dataset)):
-#    window_it = 0
-#    while printable and dataset[i][0]>windowed_dataset[window_it][0]:
-#        window_it+=1
-#        if window_it == len(windowed_dataset):
-#            printable = False
-#    if printable:
-#        print("{}:{:02d}\t{}".format(int(dataset[i][0]/60),int(dataset[i][0]%60),labels[window_it]))
-
-#for i,entry in enumerate(dataset_np):
-#    print("{}\t{}:{}\t{}".format(i,int(entry[0]/60),int(entry[0]%60),labels[i]))
