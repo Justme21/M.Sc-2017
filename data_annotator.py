@@ -88,7 +88,7 @@ class DataStore():
            linearly in the interim, computing the mean and adding this to the values to fill in the unknowns"""
         start,end,direc = -1,-1,None #direc is used for position on road since it is only discontinuous value
         i = 0
-        entry, change = None,None
+        entry, change, scale = None,None,None
         err_index,break_list = [],[]     
 
         #-1 means calibrating. Assume this only happens at start of dataset
@@ -119,9 +119,13 @@ class DataStore():
             road_width = end[3]
  
             #Only need direc for car position as is discontinuous
-            direc = start[1]-self.file_content[a-2][1] #Instantaneous slope before data loss            
+            direc = start[1]-self.file_content[a-2][1] #Instantaneous slope before data loss
+            if direc >= 0:
+                scale = 1
+            else:
+                scale = -1
             if (direc<0 and start[1]<0 and end[1]>0) or (direc>0 and start[1]>0 and end[1]<0):
-                end[1] += (direc/math.fabs(direc))*road_width #Add or subtract road width as necessary
+                end[1] += scale*road_width #Add or subtract road width as necessary
 
             #Calculate the amount of change required per step through the problem region to get from one known value to the other
             change = [(end[x] - start[x])*1.0/((b+1)-(a-1)) for x in range(len(start))]
@@ -135,7 +139,7 @@ class DataStore():
                 # centre you are on the adjacent road. From the ego perspective your position shifts from being very far left to very far right
                 # on the road (or vice versa)
                 if math.fabs(self.file_content[j][1])>road_width/2:
-                    self.file_content[j][1] = round(self.file_content[j][1]-(direc/math.fabs(direc))*road_width,3)            
+                    self.file_content[j][1] = round(self.file_content[j][1]-scale*road_width,3)            
        
      
 
@@ -192,7 +196,8 @@ def restructure(row,num_contributers):
         
 
 
-folder_loc = "Datasets/UAH-DRIVESET-v1/D1/20151111123124-25km-D1-NORMAL-MOTORWAY/"
+#folder_loc = "Datasets/UAH-DRIVESET-v1/D1/20151111123124-25km-D1-NORMAL-MOTORWAY/"
+folder_loc = "Datasets/UAH-DRIVESET-v1/D4/20151204160823-25km-D4-DROWSY-MOTORWAY/"
 
 files_of_interest = ["RAW_ACCELEROMETERS","PROC_LANE_DETECTION","PROC_VEHICLE_DETECTION"]
 entries_of_interest = [[0,2,3,4,5,6,7],[0,1,2,3,4],[0,1,2,3,4]]
@@ -207,7 +212,8 @@ row_list = []
 
 
 #375 marks the start of the turn back 
-for entry in datastore_list: entry.file_content = entry.file_content[:entry.getIndex(375)]+entry.file_content[entry.getIndex(490):]
+#for entry in datastore_list: entry.file_content = entry.file_content[:entry.getIndex(375)]+entry.file_content[entry.getIndex(490):]
+for entry in datastore_list: entry.file_content = entry.file_content[:entry.getIndex(459)]+entry.file_content[entry.getIndex(555):]
 
 
 advanceAll(datastore_list) #Bring all sources up to a common starting point
@@ -271,7 +277,10 @@ for i,entry in enumerate(dataset):
     z_t = entry[7]
     z_l = (road_width/2)+z_t-(car_width/2)
     z_r = (road_width/2)-z_t-(car_width/2) 
-    extra_vals.append(z_l/z_r)
+    if z_r == 0:
+        extra_vals.append(z_l)
+    else:
+        extra_vals.append(z_l/z_r)
 
     dataset[i]+=extra_vals
 
