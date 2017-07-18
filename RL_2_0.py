@@ -143,10 +143,10 @@ class DataStore():
 
 
 class Feature_Learner():
-    def __init__(self):
+    def __init__(self,weights=None):
         self.total_reward = 0
 
-        self.weights = None
+        self.weights = weights
         self.factors = []
         self.reward = 0
         self.q = 0
@@ -195,11 +195,11 @@ class Feature_Learner():
         if true_act is None:
             return 0
         elif act == true_act:
-            return 5
-        elif act+true_act in ["RL","LR"]:
             return 2
+        elif act+true_act in ["RL","LR"]:
+            return 1
         else:
-            return -20
+            return -4
 
 
     def act(self,true_act):        
@@ -209,8 +209,8 @@ class Feature_Learner():
         self.total_reward += self.reward
         self.reward_list.append(self.reward)
 
-        if self.reward >0: self.register[0] += 1
-        elif self.reward == 0: self.register[1] += 1
+        if self.reward >1: self.register[0] += 1
+        elif self.reward == 1: self.register[1] += 1
         else: self.register[2] += 1
 
         if max_act == "L": self.act_dist[0] += 1
@@ -242,7 +242,7 @@ class Feature_Learner():
         return False
 
 
-    def run(self,episodes,dataset,annotation):
+    def run(self,episodes,dataset,annotation,test=False):
         for i in range(episodes):
             if i%100 == 0 :
                 for j in range(len(self.register)): self.register[j]/=100 
@@ -252,6 +252,12 @@ class Feature_Learner():
             self.total_reward = 0
             self.runThrough(dataset,annotation)
             self.reward_list += [self.total_reward]
+            
+            if test:
+                print("REGISTER: {}".format(self.register))
+                print("ACTION_DISTRIBUTION: {}".format(self.act_dist))
+                print("REWARD: {}".format(self.total_reward))
+
             if self.explosionCheck():
                 print("Weight explosion after {} episodes".format(i))
                 break
@@ -504,20 +510,22 @@ pseudo_set = scaleAndChangeBase([x[1:] for x in dataset],n_comp = 25)
 
 dataset = [[dta[0]]+list(psudo) for dta,psudo in zip(dataset,pseudo_set)]
 
-windowed_dataset = makeWindows(dataset,granularity,overlap=1)
+windowed_dataset = makeWindows(dataset,granularity,overlap=5)
 annotation = windowAnnotation(annotation,[x[0] for x in windowed_dataset])
-
 
 #dataset = [x[1:] for x in dataset]
 dataset = [x[1:] for x in windowed_dataset]
 
 learner = Feature_Learner()
-reward_list = learner.run(20000,dataset,[x[1] for x in annotation])
+reward_list = learner.run(10000,dataset,[x[1] for x in annotation])
+
+test_learner = Feature_Learner(learner.weights)
+test_learner.run(1,dataset,[x[1] for x in annotation],test=True)
 
 print("Max Reward Achieved in Windowed dataset: {}".format(max(reward_list)))
 
 plt.plot(reward_list)
-plt.title("Total Rewards for 20000 episodes on windowed dataset")
+plt.title("Total Rewards for 10000 episodes on windowed dataset")
 plt.show()
 
    

@@ -261,58 +261,59 @@ class Feature_Learner():
 
 class ParticleFilter():
     def __init__(self):
-        self.data_sources = None
+        self.dataset = None
 
+        self.alpha = .00001
         self.car_width = 1.75
         self.num_particles = 50
 
         self.k_prob = None
-        self.k_dist = None
-
+        self.k_samp = None
+        self.f_k_prob = None
+        self.f_k_samp = None
+       
         self.weights = []
         self.particle_dict = {}
+        self.temp_weights = []
+        self.temp_partlce_dict = {}
 
         self.accl = []
         self.accl_change = []
         self.lane_posit = []
         self.road_width = []
 
-        self.accl_mean_std_dev = None
-        self.lane_posit_mean_std_dev = None
+        self.register = [0,0,0]
 
 
     def extractValues(self):
-        accl = None
-        for entry in self.data_sources:
-            accl = entry["RAW_ACCELEROMETERS"].getAll(3)
-            self.lane_posit += entry["PROC_LANE_DETECTION"].getAll(1)
-            self.road_width = entry["PROC_LANE_DETECTION"].getAll(2)
+        accl = []
+ 
+        for entry in self.dataset:
+            accl.append(entry[2])
+            self.lane_posit.append(entry[10])
+            self.road_width.append(entry[12])
 
-            self.accl += [9.81 * x for x in accl]
-            self.accl_chng += [0] + [9.81*(accl[i] - accl[i-1] for i in range(1,len(accl)))]
+        self.accl += [9.81 * x for x in accl]
+        self.accl_change += [0] + [9.81*(accl[i] - accl[i-1]) for i in range(1,len(accl))]
 
 
-    def initialise(self,datastores):
-        self.data_sources = datastores 
-        self.weights = [i*(1.0/n) for i in range(n)]
+    def initialise(self,dataset):
+        self.dataset = dataset 
+        self.weights = [(i+1)*(1.0/self.num_particles) for i in range(self.num_particles)]
         for i in range(self.num_particles): self.particle_dict[i] = "F"
         self.extractValues()
         
-        mean = sum(self.accl)/len(self.accl)
-        self.accl_mean_std_dev = (mean, math.sqrt((1.0/(len(self.accl)-1))*sum([(x-mean)**2 for x in self.accl])))
-
-        mean = sum(self.road_width)/len(self.road_width)
-        self.lane_posit_mean_std_dev = (mean,\
-              math.sqrt((1.0/(len(self.lane_posit)-1))*sum([(x-mean)**2 for x in self.lane_posit])))
 
         #k_samp = math.log(3)/(.165*.15) #.165 is approximately the observed magnitude averages for acceleration to both the left and right. REVISE THIS 
-        self.k_samp = math.log(3)/(sum(self.accl_chng)/len(self.accl_chng))
+        self.k_samp = math.log(3)
         #k = math.log(3) #This is based on the assumption that when z_l/z_r = 1 the probability of being in the state should be 1
         self.k_prob = math.log(3)
 
+        self.f_k_samp = 5
+        self.f_k_prob = 5
 
-    def sampleFromDist(self,x_t_1,accel,chng,dist_params):
-        (mean,std_dev) = dist_params
+
+    def sampleFromDist(self,x_t_1,accel,chng):
         rnd_val = random.random()
         #k = math.log(3)/(.165*.15) #.165 is approximately the observed magnitude averages for acceleration to both the left and right. REVISE THIS 
         if x_t_1 == "L":
@@ -327,57 +328,93 @@ class ParticleFilter():
         else:
             #t_val = (1/math.sqrt(2*math.pi*(std_dev**2)))*math.e**(-((accel-mean)**2)/(2*(std_dev**2)))
             #We omit the normalisation so that the distribution we are sampling from has the same range as the random number
-            t_val = math.e**(-((accel-mean)**2)/(2*(std_dev**2)))
-            if accel<0 and rnd_val>t_val: return "L"
-            elif accel>0 and rnd_val>t_val: return "R"
-            else: return "F"
+            t_val = 2/(math.e**(self.f_k_samp*math.fabs(accel)))
+            if rnd_val>t_val: return "F"
+            else:
+                if accel<0: return "L"
+                else: return "R"
 
 
-    def probFromDist(self,z_t,x_t,dist_params,road_width,car_width):
-        (mean,std_dev) = dist_params
+    def probFromDist(self,z_t,x_t,road_width,car_width):
         z_l = (road_width/2)+z_t-(car_width/2)
         z_r = (road_width/2)-z_t-(car_width/2)
         #k = math.log(3) #This is based on the assumption that when z_l/z_r = 1 the probability of being in the state should be 1
 
         if x_t not in {"R","L"}:
-            return (1/math.sqrt(2*math.pi*(std_dev**2)))*math.e**(-((z_t-mean)**2)/(2*(std_dev**2)))
+            return 2/(math.e**(self.f_k_prob*math.fabs(z_t)))
         else:
             if x_t == "R":
                 z_rat = z_l/z_r
             else:
                 z_rat = z_r/z_l
 
-            if (z_r <.01 and x_t=="R") or (z_l<.01 and x_t=="L"):
+            if (math.fabs(z_r)<.00001 and x_t=="R") or (math.fabs(z_l)<.000001 and x_t=="L"):
                 return 1.0
-            return 1-2/(math.e**(self.k_dist*z_rat)+1) #Functional form of hyperbolic tan (tanh) modified to include k as the slope parameter
+            
+            return 1-2/(math.e**(self.k_prob*z_rat)+1) #Functional form of hyperbolic tan (tanh) modified to include k as the slope parameter
 
 
-    def run(self):
+    def dfK(self,k,x):
+        return 2*k*(math.e**(k*x))/((1+math.e**(k*x))**2)
+
+    def train(self,data_index,prev_assign,pf_assign,annote):
+        err_mag = None
+        turns = ["R","L"]
+        if pf_assign == annote:
+            err_mag = 0
+            self.register[0] += 1
+        elif pf_assign+annote in ["LR","RL"]:
+            err_mag = 5
+            self.register[1] += 1
+        else:
+            err_mag = 10
+            self.register[2] += 1
+
+        if prev_assign in turns and prev_assign == pf_assign and annote == "F":
+            self.k_samp -= self.alpha*err_mag*self.dfK(self.k_samp,math.fabs(self.accl_change[data_index]))
+        elif pf_assign in turns and annote in turns and pf_assign != annote:
+            self.k_prob -= self.alpha*err_mag*self.dfK(self.k_prob,self.lane_posit[data_index])
+        elif prev_assign == "F" and pf_assign == "F" and annote in turns:
+            self.f_k_samp -= self.alpha*err_mag*(-self.dfK(self.f_k_samp,math.fabs(self.accl[data_index])))
+        elif prev_assign == "F" and pf_assign in turns and annote == "F":
+            self.f_k_samp += self.alpha*err_mag*(-self.dfK(self.f_k_samp,math.fabs(self.accl[data_index])))
+        elif prev_assign in turns and annote == prev_assign and pf_assign == "F":
+            self.k_samp += self.alpha*err_mag*self.dfK(self.k_samp,math.fabs(self.accl_change[data_index]))
+        elif prev_assign in turns and pf_assign == "F" and annote!= prev_assign:
+            self.f_k_prob += self.alpha*err_mag*(-self.dfK(self.f_k_prob,math.fabs(self.lane_posit[data_index])))
+        elif pf_assign in turns and pf_assign == annote:
+            self.k_prob += self.alpha*.1*self.dfK(self.k_prob,self.lane_posit[data_index])
+        elif pf_assign == "F" and pf_assign == annote:
+            self.f_k_prob += self.alpha*.1*(-self.dfK(self.f_k_prob,math.fabs(self.lane_posit[data_index])))
+ 
+        #print("F_K_SAMP: {}".format(self.f_k_samp))
+
+    def singleIt(self,data_index):
         w_norm,x_t,x_t_1 = 0,0,0
         rand_val = None
-        temp_particle_dict = {}
-        temp_weights = []
+        self.temp_particle_dict = {}
+        self.temp_weights = [0 for _ in range(self.num_particles)]
 
-        t = [source.index for source in self.data_sources]
         for i in range(self.num_particles):
             rand_val = random.random()
             j = 0
-            while self.weights[j]<rand_val: j += 1
+            while j<len(self.weights) and self.weights[j]<rand_val: j += 1
             x_t_1 = self.particle_dict[j]
-            x_t = sampleFromDist(x_t_1,self.accl[t[0]],self.accl_chng[t[0]],self.accl_mean_std_dev)
-            temp_weights[i] = probFromDist(self.lane_posit[t[1]],x_t,self.lane_posit_mean_std,self.road_width[t[1]],self.car_width)
-            w_norm += temp_weights[i]
-            temp_particle_dict[i] = x_t
+            x_t = self.sampleFromDist(x_t_1,self.accl[data_index],self.accl_change[data_index])
+            self.temp_weights[i] = self.probFromDist(self.lane_posit[data_index],x_t,self.road_width[data_index],self.car_width)
+            
+            if self.temp_weights[i] == 0:
+                print("{}\t{}\t{}\t{}".format(self.lane_posit[data_index],x_t,self.prob_params,self.road_width[data_index]))
+                exit(-1) 
+            w_norm += self.temp_weights[i]
+            self.temp_particle_dict[i] = x_t
 
-        for i in range(len(temp_weights)):
+            
+        for i in range(len(self.temp_weights)):
             if i== 0:
-                temp_weights[i]/= w_norm
+                self.temp_weights[i]/= w_norm
             else:
-                temp_weights[i] = temp_weights[i-1] + temp_weights[i]/w_norm
-
-        self.particle_dict = dict(temp_particle_dict)
-        self.weights = list(temp_weights)
-
+                self.temp_weights[i] = self.temp_weights[i-1] + self.temp_weights[i]/w_norm
 
 
 def advanceAll(source_list):
@@ -627,14 +664,55 @@ pseudo_set = scaleAndChangeBase([x[1:] for x in dataset],n_comp = 25)
 dataset = [[dta[0]]+list(psudo) for dta,psudo in zip(dataset,pseudo_set)]
 
 windowed_dataset = makeWindows(dataset,granularity,overlap=1)
-annotation = windowAnnotation(annotation,[x[0] for x in windowed_dataset])
+w_annotation = windowAnnotation(annotation,[x[0] for x in windowed_dataset])
 
 
-#dataset = [x[1:] for x in dataset]
-dataset = [x[1:] for x in windowed_dataset]
+dataset = [x[1:] for x in dataset]
+w_dataset = [x[1:] for x in windowed_dataset]
 
+state_list = None
+state_ind,state = None,None
+win_count = 0
+
+pf = ParticleFilter()
+pf.initialise(dataset)
+for _ in range(10):
+    win_count = 0
+    for i in range(len(dataset)):
+        pf.singleIt(i)
+
+        for entry in pf.particle_dict:
+            pf.train(i,pf.particle_dict[entry],pf.temp_particle_dict[entry],annotation[i][1])
+
+        pf.particle_filter = dict(pf.temp_particle_dict)
+        pf.weights = list(pf.temp_weights)
+
+        state_list = [0,0,0]
+        for entry in pf.particle_filter:
+            if pf.particle_filter[entry] == "L": state_list[0] += 1
+            elif pf.particle_filter[entry] == "F": state_list[1] += 1
+            else: state_list[2] += 1
+
+        print("{}\t{}".format(i,state_list))
+        state_ind = np.argmax(state_list)
+        if state_ind == 0: state = "L"
+        elif state_ind == 1: state = "F"
+        else: state = "R"
+
+        if state == annotation[i][1]: win_count+=1 
+
+    print("")
+    print(pf.k_prob)
+    print(pf.k_samp)
+    print(pf.f_k_prob)
+    print(pf.f_k_samp)
+    print("WIN: {}/{}".format(win_count,len(dataset)))
+    print("\n\n")
+     
+
+exit(-1)
 learner = Feature_Learner()
-reward_list = learner.run(20000,dataset,[x[1] for x in annotation])
+reward_list = learner.run(20000,w_dataset,[x[1] for x in w_annotation])
 
 print("Max Reward Achieved in Windowed dataset: {}".format(max(reward_list)))
 
@@ -642,6 +720,3 @@ plt.plot(reward_list)
 plt.title("Total Rewards for 20000 episodes on windowed dataset")
 plt.show()
 
-   
-#Remove time so that it doesn't get factored into analysis
-#dataset_np = np.array([entry[1:] for entry in windowed_dataset])
