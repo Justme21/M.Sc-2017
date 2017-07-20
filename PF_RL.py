@@ -37,7 +37,6 @@ class DataStore():
         self.index = 0 #Initialise the index to 0
         self.time = self.file_content[0][0] #Initialise time to be the time of the first entry
 
-
     def getAll(self,i):
         """Return all the entries of index i in self.file_content
            NOTE: i here is the index IN THE DATASTORE and not in the original file"""
@@ -263,9 +262,8 @@ class ParticleFilter():
     def __init__(self):
         self.dataset = None
 
-        self.alpha = .00001
-        self.car_width = 1.75
-        self.num_particles = 50
+        #self.car_width = 1.6
+        self.num_particles = 100
 
         self.k_prob = None
         self.k_samp = None
@@ -289,9 +287,9 @@ class ParticleFilter():
         accl = []
  
         for entry in self.dataset:
-            accl.append(entry[2])
-            self.lane_posit.append(entry[10])
-            self.road_width.append(entry[12])
+            accl.append(entry[1])
+            self.lane_posit.append(entry[6])
+            self.road_width.append(entry[8])
 
         self.accl += [9.81 * x for x in accl]
         self.accl_change += [0] + [9.81*(accl[i] - accl[i-1]) for i in range(1,len(accl))]
@@ -303,14 +301,34 @@ class ParticleFilter():
         for i in range(self.num_particles): self.particle_dict[i] = "F"
         self.extractValues()
         
+        z_rat_list = []
+        z_l,z_r = 0,0
+        for road_width,z_t in zip(self.road_width,self.lane_posit):
+            z_l = (road_width/2)+z_t#-(self.car_width/2)
+            z_r = (road_width/2)-z_t#-(self.car_width/2)
+            if z_l<0: z_l = 0
+            if z_r<0: z_r = 0
+           
+            z_rat_list.append(max(z_l/max(.001,z_r),z_r/max(.001,z_l)))
+
+        mean_chng = sum([math.fabs(x) for x in self.accl_change])/len(self.accl_change)
+        mean_accl = sum(self.accl)/len(self.accl)
+        mean_lane_posit = sum(self.lane_posit)/len(self.lane_posit)
+        mean_rat = sum(z_rat_list)/len(z_rat_list)
+
+        #print("CHNG: {}".format(mean_chng))
+        #print("ACCL: {}".format(mean_accl))
+        #print("LNE_POS: {}".format(mean_lane_posit))
+        #print("RAT: {}".format(mean_rat))
+        #exit(-1)
 
         #k_samp = math.log(3)/(.165*.15) #.165 is approximately the observed magnitude averages for acceleration to both the left and right. REVISE THIS 
-        self.k_samp = math.log(3)
+        self.k_samp = math.log(3)/mean_chng
         #k = math.log(3) #This is based on the assumption that when z_l/z_r = 1 the probability of being in the state should be 1
-        self.k_prob = math.log(3)
+        self.k_prob = math.log(3)/mean_rat
 
-        self.f_k_samp = 5
-        self.f_k_prob = 5
+        self.f_k_samp = math.log(3)/mean_accl
+        self.f_k_prob = math.log(3)/mean_lane_posit
 
 
     def sampleFromDist(self,x_t_1,accel,chng):
@@ -328,64 +346,74 @@ class ParticleFilter():
         else:
             #t_val = (1/math.sqrt(2*math.pi*(std_dev**2)))*math.e**(-((accel-mean)**2)/(2*(std_dev**2)))
             #We omit the normalisation so that the distribution we are sampling from has the same range as the random number
-            t_val = 2/(math.e**(self.f_k_samp*math.fabs(accel)))
+            t_val = 2/(math.e**(self.f_k_samp*math.fabs(accel))+1)
             if rnd_val>t_val: return "F"
             else:
                 if accel<0: return "L"
                 else: return "R"
 
 
-    def probFromDist(self,z_t,x_t,road_width,car_width):
-        z_l = (road_width/2)+z_t-(car_width/2)
-        z_r = (road_width/2)-z_t-(car_width/2)
+    def probFromDist(self,z_t,x_t,road_width):
+        z_l = (road_width/2)+z_t#-(self.car_width/2)
+        z_r = (road_width/2)-z_t#-(self.car_width/2)
         #k = math.log(3) #This is based on the assumption that when z_l/z_r = 1 the probability of being in the state should be 1
+        if z_l < 0: z_l = 0
+        if z_r < 0: z_r = 0
 
         if x_t not in {"R","L"}:
             return 2/(math.e**(self.f_k_prob*math.fabs(z_t)))
         else:
             if x_t == "R":
-                z_rat = z_l/z_r
+                z_rat = z_l/max(.001,z_r)
             else:
-                z_rat = z_r/z_l
+                z_rat = z_r/max(.001,z_l)
 
-            if (math.fabs(z_r)<.00001 and x_t=="R") or (math.fabs(z_l)<.000001 and x_t=="L"):
+            if (math.fabs(z_r)<.001 and x_t=="R") or (math.fabs(z_l)<.001 and x_t=="L"):
                 return 1.0
             
             return 1-2/(math.e**(self.k_prob*z_rat)+1) #Functional form of hyperbolic tan (tanh) modified to include k as the slope parameter
 
 
     def dfK(self,k,x):
-        return 2*k*(math.e**(k*x))/((1+math.e**(k*x))**2)
+        return math.fabs(2*x*(math.e**(k*x))/((1+math.e**(k*x))**2))
 
     def train(self,data_index,prev_assign,pf_assign,annote):
         err_mag = None
         turns = ["R","L"]
         if pf_assign == annote:
-            err_mag = 0
+            err_mag = -5
             self.register[0] += 1
         elif pf_assign+annote in ["LR","RL"]:
             err_mag = 5
             self.register[1] += 1
         else:
-            err_mag = 10
+            err_mag = 20
             self.register[2] += 1
 
+        #Rule 3: Decrease k_samp
         if prev_assign in turns and prev_assign == pf_assign and annote == "F":
-            self.k_samp -= self.alpha*err_mag*self.dfK(self.k_samp,math.fabs(self.accl_change[data_index]))
+            self.k_samp -= err_mag*self.dfK(self.k_samp,math.fabs(self.accl_change[data_index]))
+        #Rule 4: Decrease k_prob <- We guess L/R but true is R/L
         elif pf_assign in turns and annote in turns and pf_assign != annote:
-            self.k_prob -= self.alpha*err_mag*self.dfK(self.k_prob,self.lane_posit[data_index])
+            self.k_prob -= err_mag*self.dfK(self.k_prob,self.lane_posit[data_index])
+        #Rule 5: Decrease f_k_samp
         elif prev_assign == "F" and pf_assign == "F" and annote in turns:
-            self.f_k_samp -= self.alpha*err_mag*(-self.dfK(self.f_k_samp,math.fabs(self.accl[data_index])))
+            self.f_k_samp -= err_mag*(self.dfK(self.f_k_samp,math.fabs(self.accl[data_index])))
+        #Rule 6: Increase f_k_samp
         elif prev_assign == "F" and pf_assign in turns and annote == "F":
-            self.f_k_samp += self.alpha*err_mag*(-self.dfK(self.f_k_samp,math.fabs(self.accl[data_index])))
+            self.f_k_samp += err_mag*(self.dfK(self.f_k_samp,math.fabs(self.accl[data_index])))
+        #Rule 7: Increase k_samp
         elif prev_assign in turns and annote == prev_assign and pf_assign == "F":
-            self.k_samp += self.alpha*err_mag*self.dfK(self.k_samp,math.fabs(self.accl_change[data_index]))
+            self.k_samp += err_mag*self.dfK(self.k_samp,math.fabs(self.accl_change[data_index]))
+        #Rule 8: Increase f_k_prob
         elif prev_assign in turns and pf_assign == "F" and annote!= prev_assign:
-            self.f_k_prob += self.alpha*err_mag*(-self.dfK(self.f_k_prob,math.fabs(self.lane_posit[data_index])))
-        elif pf_assign in turns and pf_assign == annote:
-            self.k_prob += self.alpha*.1*self.dfK(self.k_prob,self.lane_posit[data_index])
-        elif pf_assign == "F" and pf_assign == annote:
-            self.f_k_prob += self.alpha*.1*(-self.dfK(self.f_k_prob,math.fabs(self.lane_posit[data_index])))
+            self.f_k_prob += err_mag*(self.dfK(self.f_k_prob,math.fabs(self.lane_posit[data_index])))
+        
+        #Not real rules.... may or may not be worth including
+        #elif pf_assign in turns and pf_assign == annote:
+        #    self.k_prob += self.alpha*.1*self.dfK(self.k_prob,self.lane_posit[data_index])
+        #elif pf_assign == "F" and pf_assign == annote:
+        #    self.f_k_prob += self.alpha*.1*(-self.dfK(self.f_k_prob,math.fabs(self.lane_posit[data_index])))
  
         #print("F_K_SAMP: {}".format(self.f_k_samp))
 
@@ -401,7 +429,7 @@ class ParticleFilter():
             while j<len(self.weights) and self.weights[j]<rand_val: j += 1
             x_t_1 = self.particle_dict[j]
             x_t = self.sampleFromDist(x_t_1,self.accl[data_index],self.accl_change[data_index])
-            self.temp_weights[i] = self.probFromDist(self.lane_posit[data_index],x_t,self.road_width[data_index],self.car_width)
+            self.temp_weights[i] = self.probFromDist(self.lane_posit[data_index],x_t,self.road_width[data_index])
             
             if self.temp_weights[i] == 0:
                 print("{}\t{}\t{}\t{}".format(self.lane_posit[data_index],x_t,self.prob_params,self.road_width[data_index]))
@@ -559,11 +587,11 @@ def augmentDataset(dataset):
     extra_vals = None
     prev_accl = [0,0,0]
     prev_accl_kal = [0,0,0]
-    prev_veh = [0,0]
+    ahd_veh = [0,0]
 
-    car_width = 1.75 #Hardcoded car width
-    max_dist = max([entry[11] for entry in dataset]) #The max distance a car is ever away from the ego 
-    max_time = max([entry[12] for entry in dataset]) #The max time to collision
+    #car_width = 1.6 #Hardcoded car width
+    max_dist = max([entry[10] for entry in dataset]) #The max distance a car is ever away from the ego 
+    max_time = max([entry[11] for entry in dataset]) #The max time to collision
 
 
     car_rat = None
@@ -580,17 +608,22 @@ def augmentDataset(dataset):
         extra_vals.append(entry[6]-prev_accl_kal[2])
 
         #Include the change in distance to the car in front and time to collision with the car in front
-        if prev_veh[0] == -1 or entry[10] == -1:
+        if ahd_veh[0] == -1 or entry[10] == -1:
             extra_vals+= [max_dist,max_time] #Here distance and speed were both -1
         else:
-            extra_vals.append(entry[10]-prev_veh[0])
-            extra_vals.append(entry[11]-prev_veh[1])
+            extra_vals.append(entry[10]-ahd_veh[0])
+            extra_vals.append(entry[11]-ahd_veh[1])
 
         #Include ration of distance from the left side of the road to that from the right side of the road
         road_width = entry[9]
         z_t = entry[7]
-        z_l = (road_width/2)+z_t-(car_width/2)
-        z_r = (road_width/2)-z_t-(car_width/2) 
+        z_l = (road_width/2)+z_t#-(car_width/2)
+        z_r = (road_width/2)-z_t#-(car_width/2) 
+
+        #This isn't ideal but the inaccuracy arising from the readings means
+        # No car width satisfies every value
+        if z_l < 0 : z_l = 0
+        if z_r <0 : z_r = .001
         extra_vals.append(z_l/z_r)
 
         #Augment values
@@ -599,7 +632,7 @@ def augmentDataset(dataset):
         #Reset values for next iteration
         prev_accl = [entry[1],entry[2],entry[3]]
         prev_accl_kal = [entry[4],entry[5],entry[6]]
-        prev_veh = [entry[10],entry[11]]
+        ahd_veh = [entry[10],entry[11]]
 
     return dataset
 
@@ -649,7 +682,6 @@ while None not in advanceIncr(datastore_list):
     for entry in datastore_list: row_list+= entry.getRow()[1:]
     dataset.append([min([x.time for x in datastore_list])]+row_list)
 
-
 granularity = .5
 dataset = granularise(dataset,granularity)
 
@@ -659,9 +691,9 @@ annotation = getAnnotation(folder_loc)
 
 while dataset[0][0]<annotation[0][0]: del dataset[0]
 
-pseudo_set = scaleAndChangeBase([x[1:] for x in dataset],n_comp = 25)
+#pseudo_set = scaleAndChangeBase([x[1:] for x in dataset],n_comp = 25)
 
-dataset = [[dta[0]]+list(psudo) for dta,psudo in zip(dataset,pseudo_set)]
+#dataset = [[dta[0]]+list(psudo) for dta,psudo in zip(dataset,pseudo_set)]
 
 windowed_dataset = makeWindows(dataset,granularity,overlap=1)
 w_annotation = windowAnnotation(annotation,[x[0] for x in windowed_dataset])
@@ -673,40 +705,60 @@ w_dataset = [x[1:] for x in windowed_dataset]
 state_list = None
 state_ind,state = None,None
 win_count = 0
+state_sum = 0
+rnd = 0
+
+trans_dict = {"L":0,"F":1,"R":2}
 
 pf = ParticleFilter()
 pf.initialise(dataset)
-for _ in range(10):
+for _ in range(1):
     win_count = 0
+    win_list = []
     for i in range(len(dataset)):
         pf.singleIt(i)
 
+        state_list = [0,0,0]
+        for entry in pf.temp_particle_dict:
+            state_list[trans_dict[pf.temp_particle_dict[entry]]] += 1
+        state_sum = sum(state_list)
+        state_list = [x/state_sum for x in state_list]
+ 
         for entry in pf.particle_dict:
             pf.train(i,pf.particle_dict[entry],pf.temp_particle_dict[entry],annotation[i][1])
+            rnd = random.random()
+            if rnd<(1-state_list[trans_dict[pf.temp_particle_dict[entry]]]): pf.temp_particle_dict[entry] = annotation[i][1]
 
-        pf.particle_filter = dict(pf.temp_particle_dict)
+        pf.particle_dict = dict(pf.temp_particle_dict)
         pf.weights = list(pf.temp_weights)
 
+
         state_list = [0,0,0]
-        for entry in pf.particle_filter:
-            if pf.particle_filter[entry] == "L": state_list[0] += 1
-            elif pf.particle_filter[entry] == "F": state_list[1] += 1
+        for entry in pf.temp_particle_dict:
+            if pf.temp_particle_dict[entry] == "L": state_list[0] += 1
+            elif pf.temp_particle_dict[entry] == "F": state_list[1] += 1
             else: state_list[2] += 1
 
-        print("{}\t{}".format(i,state_list))
+        print("{}\t{}\t{}".format(i,state_list,annotation[i][1]),end='')
         state_ind = np.argmax(state_list)
         if state_ind == 0: state = "L"
         elif state_ind == 1: state = "F"
         else: state = "R"
 
-        if state == annotation[i][1]: win_count+=1 
+
+        if state == annotation[i][1]: 
+            win_count+=1
+            win_list.append(i)
+            print("*")
+        else: print("")
 
     print("")
-    print(pf.k_prob)
-    print(pf.k_samp)
-    print(pf.f_k_prob)
-    print(pf.f_k_samp)
+    print("K_PROB: {}".format(pf.k_prob))
+    print("K_SAMP: {}".format(pf.k_samp))
+    print("F_K_PROB: {}".format(pf.f_k_prob))
+    print("F_K_SAMP: {}".format(pf.f_k_samp))
     print("WIN: {}/{}".format(win_count,len(dataset)))
+    #print("LIST: {}".format(win_list))
     print("\n\n")
      
 
