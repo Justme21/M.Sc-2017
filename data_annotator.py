@@ -1,6 +1,8 @@
 #!/usr/bin/python
 
 import math
+import re
+import sys
 
 class DataStore():
 
@@ -195,13 +197,15 @@ def restructure(row,num_contributers):
     return row_redux
         
 
+def changeToSeconds(minutes,seconds):
+    return int(minutes)*60+int(seconds)
 
-#folder_loc = "Datasets/UAH-DRIVESET-v1/D1/20151111123124-25km-D1-NORMAL-MOTORWAY/"
-folder_loc = "Datasets/UAH-DRIVESET-v1/D4/20151204160823-25km-D4-DROWSY-MOTORWAY/"
 
+folder_loc = sys.argv[1]
+intermission_start = int(sys.argv[2])
+intermission_end = int(sys.argv[3])
 files_of_interest = ["RAW_ACCELEROMETERS","PROC_LANE_DETECTION","PROC_VEHICLE_DETECTION"]
 entries_of_interest = [[0,2,3,4,5,6,7],[0,1,2,3,4],[0,1,2,3,4]]
-#Omit entry 8 as this is Roll which is only significantly different on  outgoing and return trips
 
 datastore_list = []
 for i,entry in enumerate(files_of_interest):
@@ -211,9 +215,7 @@ dataset = []
 row_list = []
 
 
-#375 marks the start of the turn back 
-#for entry in datastore_list: entry.file_content = entry.file_content[:entry.getIndex(375)]+entry.file_content[entry.getIndex(490):]
-for entry in datastore_list: entry.file_content = entry.file_content[:entry.getIndex(459)]+entry.file_content[entry.getIndex(555):]
+for entry in datastore_list: entry.file_content = entry.file_content[:entry.getIndex(intermission_start)]+entry.file_content[entry.getIndex(intermission_end):]
 
 
 advanceAll(datastore_list) #Bring all sources up to a common starting point
@@ -244,80 +246,45 @@ while ind+1<len(dataset):
     last = ind
     ind += 1
 
-extra_vals = None
-prev_accl = [0,0,0]
-prev_accl_kal = [0,0,0]
-prev_veh = [0,0]
-
-car_width = 1.75 #Hardcoded car width
-max_dist = max([entry[11] for entry in dataset]) #The max distance a car is ever away from the ego 
-max_time = max([entry[12] for entry in dataset]) #The max time to collision
 
 
 
-car_rat = None
-
-for i,entry in enumerate(dataset):
-    extra_vals = []
-    extra_vals.append(entry[1]-prev_accl[0])
-    extra_vals.append(entry[2]-prev_accl[1])
-    extra_vals.append(entry[3]-prev_accl[2])
-
-    extra_vals.append(entry[4]-prev_accl_kal[0])
-    extra_vals.append(entry[5]-prev_accl_kal[1])
-    extra_vals.append(entry[6]-prev_accl_kal[2])
-
-    if prev_veh[0] == -1 or entry[10] == -1:
-        extra_vals+= [max_dist,max_time] #Here distance and speed were both -1
-    else:
-        extra_vals.append(entry[10]-prev_veh[0])
-        extra_vals.append(entry[11]-prev_veh[1])
-
-    road_width = entry[9]
-    z_t = entry[7]
-    z_l = (road_width/2)+z_t-(car_width/2)
-    z_r = (road_width/2)-z_t-(car_width/2) 
-    if z_r == 0:
-        extra_vals.append(z_l)
-    else:
-        extra_vals.append(z_l/z_r)
-
-    dataset[i]+=extra_vals
-
-    prev_accl = [entry[1],entry[2],entry[3]]
-    prev_accl_kal = [entry[4],entry[5],entry[6]]
-    prev_veh = [entry[10],entry[11]]
-
-posit=0
-time_width = 5 #seconds
-window_len =  math.ceil(time_width/granularity) #Assume time_width>granularity
-windowed_dataset = []
-while posit<len(dataset):
-    row = []
-    j = 0
-    while posit+j<len(dataset) and j<window_len: #dataset[posit+j][0]-dataset[posit][0]<window_len:
-        row += dataset[posit+j][1:]
-        j += 1
-    
- 
-    if posit+j<len(dataset) and  j==window_len: #dataset[posit+j][0]-dataset[posit][0] >= window_len:    
-        #row = restructure(row,window_len)
-        windowed_dataset.append([dataset[posit+j-1][0]]+row) #want to include the timestep for reference
-        posit+= int(window_len)#posit+=int(window_len/2) #Overlapping windows
-    else:
-        posit += j
-      
 datafile = open("{}-annotation.txt".format(folder_loc),"w")
 annote = None
 
-for entry in windowed_dataset:
-    annote = None
-    while annote not in ["L","F","R"]:
-        annote = input("{}:{:02d}-{}:{:02d}\t".format(int(entry[0]/60),int(entry[0]%60),int((entry[0]+time_width)/60),\
-                                                    int((entry[0]+time_width)%60)))
+cur_time = dataset[0][0]
+end_time = dataset[-1][0]
+start_turn,end_turn = 0,0
+direc = None
+i=0
+
+next_turn = input("Enter time of start/end, as well as direction, of next turn: ")
+info_extractor = re.compile('([0-9]*):([0-9]*) ([0-9]*):([0-9]*) ([a-zA-Z])')
+
+
+while cur_time<end_time and next_turn != "-1":
+    try: 
+        line=re.split(info_extractor,next_turn)
+        start_turn = changeToSeconds(line[1],line[2])
+        end_turn = changeToSeconds(line[3],line[4])
+        direc = line[5]
+
+        while cur_time<min(start_turn,end_time):
+            if cur_time == dataset[i][0]:
+                datafile.write("{}\t{}\n".format(cur_time,"F"))
+                i+=1
+            cur_time += granularity
+        while cur_time <= min(end_turn,end_time):
+            datafile.write("{}\t{}\n".format(cur_time,direc))
+            cur_time += granularity
+            i += 1
+    except:
+        print("Why don't we try that again")
+    next_turn = input("Enter time of start/end, as well as direction, of next turn: ")
     
-    for i in range(window_len):
-        datafile.write("{}\t{}\n".format(entry[0]+i*granularity,annote))
+while cur_time<end_time:
+    datafile.write("{}\t{}\n".format(cur_time,"F"))
+    cur_time += granularity
 
 datafile.close()
 print("FINISHED")

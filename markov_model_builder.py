@@ -419,7 +419,7 @@ class MarkovModel():
     
     def __init__(self):
         self.state_dict_list = {}
-        self.state_len = 10
+        self.state_len = 5
 
     def addData(self,annotation):
         cur_state = ['0'] #This is the trigger for sequence starts. Should be helpful for simulation
@@ -453,7 +453,8 @@ class MarkovModel():
                 count = content_dict["count"]
                 for entry in content_dict:
                     content_dict[entry]/=count
-            print("{}: {}".format(entry,content_dict))
+            if entry != "count":
+                print("{}: {}".format(entry,content_dict))
 
 sources = getDirectories()
 
