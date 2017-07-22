@@ -114,7 +114,10 @@ class DataStore():
         for (a,b) in break_list:
             #Start and end are the entries immediately before and after each problem region
             start = list(self.file_content[a-1])
-            end = list(self.file_content[b+1])
+            try:
+                end = list(self.file_content[b+1])
+            except:
+                end = list(self.file_content[b])
             #For the sake of accuracy in calculating the mean road_width is, when calculating the averages
             # assumed to be the value at the end of the region. This is to prevent discontinuities
             # between imputed values and real values  

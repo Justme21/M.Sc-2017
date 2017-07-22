@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import math
+import markov
 import numpy as np
 import os
 import random
@@ -117,7 +118,10 @@ class DataStore():
         for (a,b) in break_list:
             #Start and end are the entries immediately before and after each problem region
             start = list(self.file_content[a-1])
-            end = list(self.file_content[b+1])
+            try:
+                end = list(self.file_content[b+1])
+            except:
+                end = list(self.file_content[b])
             #For the sake of accuracy in calculating the mean road_width is, when calculating the averages
             # assumed to be the value at the end of the region. This is to prevent discontinuities
             # between imputed values and real values  
@@ -415,46 +419,6 @@ def makeDataList(location):
     return data_list
 
 
-class MarkovModel():
-    
-    def __init__(self):
-        self.state_dict_list = {}
-        self.state_len = 5
-
-    def addData(self,annotation):
-        cur_state = ['0'] #This is the trigger for sequence starts. Should be helpful for simulation
-        prev_state = None
-        state_dict = {}
-        for entry in annotation:
-            cur_state += [entry]
-            if len(cur_state)>self.state_len:
-                prev_state = cur_state[:-1]
-                prev_key = ''.join(str(x) for x in prev_state)
-
-                cur_state = cur_state[1:]
-                cur_key = ''.join(str(x) for x in cur_state)
-
-            if prev_state is not None:
-                if prev_key not in self.state_dict_list:
-                    self.state_dict_list[prev_key] = {"count":0}
-                state_dict = self.state_dict_list[prev_key]
-                state_dict["count"] += 1
-                if cur_key not in state_dict:
-                    state_dict[cur_key] = 0
-                state_dict[cur_key] += 1
-
-
-    def printContents(self,probability=False):
-        content_dict = {}
-        count = None
-        for entry in self.state_dict_list:
-            content_dict = dict(self.state_dict_list[entry])
-            if probability:
-                count = content_dict["count"]
-                for entry in content_dict:
-                    content_dict[entry]/=count
-            if entry != "count":
-                print("{}: {}".format(entry,content_dict))
 
 sources = getDirectories()
 
@@ -462,8 +426,24 @@ data_list = []
 for entry in sources:
     data_list += makeDataList(entry)
 
-markov_model = MarkovModel()
-for entry in data_list:
-    markov_model.addData(entry[1])
+markov_model = markov.MarkovModel(5)
 
-markov_model.printContents(True)
+for entry in data_list:
+    markov_model.addData(entry)
+
+markov_model.finishAdd()
+
+i = 0
+cur_state = None
+while i<1000:
+    #Cur_state is the true annotation for the action given by actions
+    #So when in prev_state, and this set of actions are observed, the "best" action
+    # should the one leading to cur_state
+    cur_state,actions = markov_model.simulate(cur_state)
+    if i==0:
+        for entry in cur_state[1:]:
+            print("{} : {}".format(i,entry))
+            i += 1
+    else:
+        print("{} : {}\t{}".format(i,cur_state[-1],actions))
+        i += 1
