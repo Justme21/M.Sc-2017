@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import math
 import random
 
 class DrivingLearner():
@@ -16,13 +17,16 @@ class DrivingLearner():
         self.total_reward = 0
         self.reward_list = []
 
-        self.look_back = 5
+        self.look_back = look_back
 
         self.q_values = {}
 
 
-    def getState(self,cur_state)
+    def getState(self,cur_state):
         state = []
+
+        if self.from_state == []:
+            self.from_state = [0 for _ in range(6)]
 
         #First part of the state will be the last 4 states we were in
         state += list(self.prev_states)
@@ -43,7 +47,7 @@ class DrivingLearner():
         state.append(int(cur_state[12]/10))
 
         for i in range(6):
-            state.append((cur_state[i]-self.prev_state[i])>0)
+            state.append((cur_state[i]-self.from_state[i])>0)
 
         z_t = state[6]
         z_l = (state[8]/2)+z_t-(self.car_width/2)
@@ -53,16 +57,16 @@ class DrivingLearner():
         return state    
 
 
-    def initialise(self,model):
+    def initialise(self,init_state_list):
         self.reward_list.append(self.total_reward)
 
         self.reward = 0
         self.total_reward = 0
 
-        self.prev_states = list(model.getInitStates())
-        self.state = self.getState(model.getState())
+        self.prev_states = list(init_state_list)
+        self.state = None
 
-        self.car_width = model.getCarWidth()
+        self.car_width = 1.75
 
 
     def getMaxAction(self):
@@ -70,19 +74,30 @@ class DrivingLearner():
         top_q = None
         act = None
 
-        if self.state in self.q_values.keys():
-            act_list = self.q_values[self.state]
+        if ''.join(self.prev_states) in self.q_values.keys():
+            act_list = self.q_values[''.join(self.prev_states)]
             top_q = max(act_list)
             act = act_list.index(top_q)
         else:
-            self.q_values[self.state] = [0,0,0]
+            self.q_values[''.join(self.prev_states)] = [0,0,0]
 
         if act is None or random.random()<self.e:
             act = random.randint(0,2)
         
         return act
 
-    def act(self):
+    def move(self,action,model):
+        prob_dict = model.getProb(''.join(self.prev_states))
+        if action in prob_dict:
+            action_prob = prob_dict[action]
+            max_prob = max([prob_dict[x] for x in prob_dict if x != "count"])
+            print("{}\t{}\t{}".format(max_prob,action_prob,max_prob-action_prob))
+            exit(-1)
+            return 1-(max_prob-action_prob)
+        else:
+            return -1
+
+    def act(self,model):
         action = None
         act = self.getMaxAction()
 
@@ -93,15 +108,23 @@ class DrivingLearner():
         else:
             action = "R"
 
-        self.reward = self.move(action)
-        self.prev_states = self.prev_states[1:]+[action]
+        self.reward = self.move(''.join(self.prev_states[1:]+[action]),model)
+        if self.reward>0: #Only make the move if it's a possible move to make
+            self.prev_states = self.prev_states[1:]+[action]
+        if math.fabs(self.reward)>1:
+            print("THE BIG 'UN: {}".format(self.reward))
+            exit(-1)
         self.total_reward += self.reward
+        return ''.join(self.prev_states)
 
 
-    def sense(self,model):
+    def sense(self,state):
         #Only store the bits from the state that can't be computed
-        self.from_state = self.state[5:18]
-        self.state = self.getState(model.getState())
+        if self.state == None:
+            self.from_state = []
+        else:
+            self.from_state = self.state[self.look_back:13+self.look_back]
+        self.state = self.getState(state)
 
 
     def learn(self,model):

@@ -40,16 +40,11 @@ class MarkovModel():
     def changeToProb(self):
         content_dict = {}
         count = None
-        prev = None
         for entry in self.state_dict_list:
             content_dict = self.state_dict_list[entry]
             count = content_dict["count"]
-            prev = None
             for entry2 in content_dict:
-                if entry2 != "count":
-                    content_dict[entry2]/=count
-                    if prev is not None: content_dict[entry2] += prev
-                    prev = content_dict[entry2]
+                content_dict[entry2]/=count
 
 
     def printContents(self):
@@ -89,14 +84,31 @@ class MarkovModel():
             action.append(np.random.normal(avg,std))
         return action
 
+    def cumulProb(self,action_dict):
+        prev = 0
+        act_dict = dict(action_dict)
+        for action in action_dict:
+            if action != "count":
+                action_dict[action] += prev
+                prev = action_dict[action]
+        return act_dict
+
+
+    def getProb(self,key):
+        return self.state_dict_list[key]
+
     def simulate(self,start=None):
+        for entry in self.state_dict_list:
+            print("{}: {}".format(entry,self.state_dict_list[entry]))
+        exit(-1)
+
         if start == None:
             action_set = [x for x in self.state_dict_list.keys() if "0" in x]
             return np.random.choice(action_set),None
         else:
             num = np.random.random()
-            action_dict = dict(self.state_dict_list[start])
+            action_dict = self.cumulProb(self.state_dict_list[start])
             for state in [key for key in action_dict if key != "count"]:
                 if num<action_dict[state]: 
                     params = self.state_action_dict[start][state]
-                    return state, self.sampleAction(params)
+                    return state,self.sampleAction(params)
