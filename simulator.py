@@ -155,18 +155,47 @@ def makeDataList(location):
     return data_list
 
 def runSimulation(markov_model,learner,num_ep,num_it):
-    annotes,_ = markov_model.simulate(None)
-    learner.initialise(annotes)
+    learner_action = None
+    count_wrong = 0
+    cross_section = [[0,0,0],[0,0,0],[0,0,0]] 
+    index_dict = {"L":0,"F":1,"R":2}    
+
+    true_to_state,_ = markov_model.simulate(None)
+    learner.initialise(true_to_state)
+    if num_ep%10 == 0: learner.e = 0
     for i in range(num_it):
-        _,state = markov_model.simulate(annotes)
+        true_to_state,state = markov_model.simulate(true_to_state)
         learner.sense(state) #First detect the new state
-        annotes = learner.act(markov_model)
-        learner.callback(True,num_ep,i)
+        learner_action = learner.act(markov_model)
+        if i>0 :learner.learn()
+        learner.callback(learner.e%10!=0,num_ep,i,true_to_state)
+        if learner_action != true_to_state[-1]: 
+            count_wrong += 1
+        
+        cross_section[index_dict[learner_action]][index_dict[true_to_state[-1]]] += 1
+
+
+    if num_ep%10 == 0:
+        rule_file = open("Rules_Learnt.txt","w")
+        record_file = open("Accuracy_track.txt","a")
+        
+        print("CROSS SECTION")
+        for entry in cross_section:
+            print(entry)       
+        print("")
+
+        rule_dict = learner.getRules()
+        for entry in rule_dict:
+            rule_file.write("{} -> {}\n".format(entry,rule_dict[entry]))
+        rule_file.close()
+        
+        record_file.write("{}\t{}\t{}\n".format(num_ep,count_wrong,count_wrong*1.0/num_it))
+        record_file.close()
     
 
-look_back = 5
+look_back = 10
 num_episodes = 2000
-num_iterations = 3600 #3600 half seconds = 30 minutes
+num_iterations = 14400 #3600 half seconds = 30 minutes
 
 sources = getDirectories()
 
@@ -182,6 +211,9 @@ for entry in data_list:
 
 markov_model.finishAdd()
 
+
+record_file = open("Accuracy_track.txt","w")
+record_file.close()
 for i in range(1,num_episodes+1):
     runSimulation(markov_model,learner,i,num_iterations)
 

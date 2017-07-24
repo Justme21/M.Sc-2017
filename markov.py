@@ -87,28 +87,26 @@ class MarkovModel():
     def cumulProb(self,action_dict):
         prev = 0
         act_dict = dict(action_dict)
-        for action in action_dict:
+        for action in act_dict:
             if action != "count":
-                action_dict[action] += prev
-                prev = action_dict[action]
+                act_dict[action] += prev
+                prev = act_dict[action]
+
         return act_dict
 
 
     def getProb(self,key):
         return self.state_dict_list[key]
 
-    def simulate(self,start=None):
-        for entry in self.state_dict_list:
-            print("{}: {}".format(entry,self.state_dict_list[entry]))
-        exit(-1)
 
-        if start == None:
+    def simulate(self,from_state=None):
+        if from_state == None:
             action_set = [x for x in self.state_dict_list.keys() if "0" in x]
             return np.random.choice(action_set),None
         else:
             num = np.random.random()
-            action_dict = self.cumulProb(self.state_dict_list[start])
-            for state in [key for key in action_dict if key != "count"]:
-                if num<action_dict[state]: 
-                    params = self.state_action_dict[start][state]
-                    return state,self.sampleAction(params)
+            action_dict = self.cumulProb(self.state_dict_list[from_state])
+            for to_state in [key for key in action_dict if key != "count"]:
+                if num<action_dict[to_state]: 
+                    params = self.state_action_dict[from_state][to_state]
+                    return to_state,self.sampleAction(params)
