@@ -4,9 +4,14 @@ from markov import MarkovModel
 from driving_q_learner import DrivingLearner
 from datastore import DataStore
 
-import matplotlib as plt
+import matplotlib.pyplot as plt
 import os
+import random
 import re
+
+
+index_dict = {"L":0,"F":1,"R":2}    
+
 
 def advanceAll(source_list):
     """Advances all entries in source_list at least once and then ensures
@@ -154,11 +159,10 @@ def makeDataList(location):
 
     return data_list
 
-def runSimulation(markov_model,learner,num_ep,num_it):
+def runSimulation(markov_model,learner,num_ep,num_it,look_back):
     learner_action = None
     count_wrong = 0
     cross_section = [[0,0,0],[0,0,0],[0,0,0]] 
-    index_dict = {"L":0,"F":1,"R":2}    
 
     true_to_state,_ = markov_model.simulate(None)
     learner.initialise(true_to_state)
@@ -167,17 +171,17 @@ def runSimulation(markov_model,learner,num_ep,num_it):
         true_to_state,state = markov_model.simulate(true_to_state)
         learner.sense(state) #First detect the new state
         learner_action = learner.act(markov_model)
-        if i>0 :learner.learn()
-        learner.callback(learner.e%10!=0,num_ep,i,true_to_state)
+        if i>0 :
+            learner.learn(true_to_state[-1])
+        learner.callback(num_ep%10!=0,num_ep,i,true_to_state)
         if learner_action != true_to_state[-1]: 
             count_wrong += 1
         
         cross_section[index_dict[learner_action]][index_dict[true_to_state[-1]]] += 1
 
-
     if num_ep%10 == 0:
-        rule_file = open("Rules_Learnt.txt","w")
-        record_file = open("Accuracy_track.txt","a")
+        rule_file = open("Rules_Learnt_{}.txt".format(look_back),"w")
+        record_file = open("Accuracy_track_{}.txt".format(look_back),"a")
         
         print("CROSS SECTION")
         for entry in cross_section:
@@ -193,15 +197,16 @@ def runSimulation(markov_model,learner,num_ep,num_it):
         record_file.close()
     
 
-look_back = 10
+look_back = 5
 num_episodes = 2000
-num_iterations = 14400 #3600 half seconds = 30 minutes
+num_iterations = 7200 #3600 half seconds = 30 minutes
 
 sources = getDirectories()
 
 data_list = []
 for entry in sources:
     data_list += makeDataList(entry)
+
 
 markov_model = MarkovModel(look_back)
 learner = DrivingLearner(look_back)
@@ -212,10 +217,37 @@ for entry in data_list:
 markov_model.finishAdd()
 
 
-record_file = open("Accuracy_track.txt","w")
+record_file = open("Accuracy_track_{}.txt".format(look_back),"w")
 record_file.close()
 for i in range(1,num_episodes+1):
-    runSimulation(markov_model,learner,i,num_iterations)
+    runSimulation(markov_model,learner,i,num_iterations,look_back)
 
-learner.reward_list.append(learner.total_Reward)
-plt.plot(learner.reward_list)
+learner.reward_list.append(learner.total_reward)
+sim_reward_list = list(learner.reward_list)
+
+
+count_dict = {True:0,False:0}
+test_cross_section = [[0,0,0],[0,0,0],[0,0,0]]
+
+for _ in range(2): #Run twice since each entry in datalist is only half a journey 
+    [test_data,annotation] = data_list[random.randint(0,len(data_list)-1)]
+    init_state = [0]+annotation[:look_back-1]
+
+    learner.initialise(init_state)
+    for (inputs,annote) in zip(test_data[look_back:],annotation[look_back:]):
+        learner.sense(inputs)
+        learner_action = learner.act(None,learning=False)
+        count_dict[learner_action==annote] += 1
+        test_cross_section[index_dict[learner_action]][index_dict[annote]] += 1
+        init_state = init_state[1:]+[annote]
+        learner.callback(False,None,None,init_state)
+
+print("RESULTS:")
+print("COUNT_DICT: {}".format(count_dict))
+print("CROSS_SECTION:")
+for entry in test_cross_section:
+    print(entry)
+
+plt.plot(sim_reward_list)
+plt.title("Reward achieved for learner with {} Look Back".format(look_back))
+plt.show()
