@@ -5,6 +5,7 @@ from driving_q_learner import DrivingLearner
 from datastore import DataStore
 
 import matplotlib.pyplot as plt
+import numpy as np
 import os
 import random
 import re
@@ -164,6 +165,8 @@ def runSimulation(markov_model,learner,num_ep,num_it,look_back):
     count_wrong = 0
     cross_section = [[0,0,0],[0,0,0],[0,0,0]] 
 
+    np.random.seed(4)
+    random.seed(4)
     true_to_state,_ = markov_model.simulate(None)
     learner.initialise(true_to_state)
     if num_ep%10 == 0: learner.e = 0
@@ -180,69 +183,106 @@ def runSimulation(markov_model,learner,num_ep,num_it,look_back):
         cross_section[index_dict[learner_action]][index_dict[true_to_state[-1]]] += 1
 
     if num_ep%10 == 0:
-        rule_file = open("Rules_Learnt_{}.txt".format(look_back),"w")
-        record_file = open("Accuracy_track_{}.txt".format(look_back),"a")
+        #rule_file = open("test-Rules_Learnt_{}.txt".format(look_back),"w")
+        record_file = open("test-Accuracy_track_{}_2.txt".format(look_back),"a")
         
-        print("CROSS SECTION")
+        print("CROSS SECTION: {}".format(num_ep))
         for entry in cross_section:
             print(entry)       
         print("")
 
-        rule_dict = learner.getRules()
-        for entry in rule_dict:
-            rule_file.write("{} -> {}\n".format(entry,rule_dict[entry]))
-        rule_file.close()
+        #rule_dict = learner.getRules()
+        #for entry in rule_dict:
+        #    rule_file.write("{} -> {}\n".format(entry,rule_dict[entry]))
+        #rule_file.close()
         
         record_file.write("{}\t{}\t{}\n".format(num_ep,count_wrong,count_wrong*1.0/num_it))
         record_file.close()
     
 
+print("TEST")
+
+#Static Variables for simulation
 look_back = 5
-num_episodes = 2000
+num_episodes = 2#2000
 num_iterations = 7200 #3600 half seconds = 30 minutes
 
+#Seed the random number generators so that we can compre results from different
+# learners
+random.seed(123454321)
+np.random.seed(234565432)
+
+#Crawls the directory tree and finds all the files with annotated data
 sources = getDirectories()
 
+#Creates a list of lists. Each sub-list is a run in a single direction along
+# the motorway as well as the annotation associated with that run
+# One of the runs was broken up by a data input break somewhere along the way.
+# so this adds an extra file. For the moment nothing has been done about this.
 data_list = []
 for entry in sources:
     data_list += makeDataList(entry)
 
-
+#Initialise the Markov Model data simulator and the driving learner
 markov_model = MarkovModel(look_back)
 learner = DrivingLearner(look_back)
 
+#Feed the data to the simulator so it can create simulations
 for entry in data_list:
     markov_model.addData(entry)
 
+#After data input distributions over different actions are generated. This
+# is done in finishAdd
 markov_model.finishAdd()
 
-
-record_file = open("Accuracy_track_{}.txt".format(look_back),"w")
+#Open Accuracy tracker file once here in "write" mode to wipe the old version of the 
+# file. Later writes are in append mode, which does not overwrite.
+record_file = open("test-Accuracy_track_{}_2.txt".format(look_back),"w")
 record_file.close()
+
+#Simulate the specified number of episodes
 for i in range(1,num_episodes+1):
     runSimulation(markov_model,learner,i,num_iterations,look_back)
 
+#Rewards are appended in initialise, so at the start of an episode. This 
+# means that the last episode's reward is not automatically included in the 
+# reward_list
 learner.reward_list.append(learner.total_reward)
+
+#Copy reward list so that testing does not affect printed results
 sim_reward_list = list(learner.reward_list)
 
-
+#Dictionary used to keep track of how many actions the learner predicts correctly
+# (True) vs. incorrectly (False)
 count_dict = {True:0,False:0}
+
+#Confusion matrix for the test data
 test_cross_section = [[0,0,0],[0,0,0],[0,0,0]]
 
+random.seed(27)
+np.random.seed(27)
 for _ in range(2): #Run twice since each entry in datalist is only half a journey 
+    #Randomly selected run from the data list
     [test_data,annotation] = data_list[random.randint(0,len(data_list)-1)]
+    #The learner marks the start of runs by a 0 initially in the sequence
     init_state = [0]+annotation[:look_back-1]
 
+    #Initialise the learner and standard simulation runthrough
+    #Keeping track of correct/accurate guesses. 
     learner.initialise(init_state)
     for (inputs,annote) in zip(test_data[look_back:],annotation[look_back:]):
         learner.sense(inputs)
         learner_action = learner.act(None,learning=False)
         count_dict[learner_action==annote] += 1
+        #The columns of the confusion matrix are the true classifications
+        #The rows are the learners classifications
         test_cross_section[index_dict[learner_action]][index_dict[annote]] += 1
-        init_state = init_state[1:]+[annote]
+        init_state = init_state[1:]+[annote] #revise state
+        #Pass False to indicate learner should not be learning here
         learner.callback(False,None,None,init_state)
 
-print("RESULTS:")
+
+print("RESULTS: {}".format(look_back))
 print("COUNT_DICT: {}".format(count_dict))
 print("CROSS_SECTION:")
 for entry in test_cross_section:
