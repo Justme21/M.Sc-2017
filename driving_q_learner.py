@@ -62,8 +62,9 @@ class DrivingLearner():
             self.state_copy = [0 for _ in range(3)]
 
         #First part of the state will be the last look_back-1 states we were in
-        state += list(self.prev_acts[1:])
-       
+        #state += list(self.prev_acts[1:])
+        #state += self.prev_acts[-1] #only include the last action performed. Less information than was used to generate the data       
+
         #Binary values for the entries in the state relating to acceleration  
         #Only use first 3 accelerations to reduce state space       
        # for i in range(3):
@@ -76,7 +77,7 @@ class DrivingLearner():
         #    state.append(int(cur_state[i]))
 
         #Distance to car in front can be -1 which should be a separate state
-        #state.append(min(int(cur_state[9]),int(cur_state[9]/20))) #dist to car
+        state.append(min(int(cur_state[9]),int(cur_state[9]/20))) #dist to car
         #state.append(min(int(cur_state[10]),int(cur_state[10]/10))) #time to collision
         #state.append(int(cur_state[11])) #number of cars on road
         #state.append(int(cur_state[12]/40)) #GPS-speed
@@ -84,6 +85,7 @@ class DrivingLearner():
         #Relative variables
         #for i in range(3):
         #    state.append((cur_state[i]-self.state_copy[i])>0)
+        state.append((cur_state[1]-self.state_copy[1])>0)
 
         #Ratio of distance from left over distance from right
         #There are issues with this since the readings are approx
@@ -204,8 +206,13 @@ class DrivingLearner():
            action was a turn then we further reward this to incentivise selecting turns"""
         if index_to_direc[self.act_index] == true_action:
             self.reward += 1
-            if true_action in ["L","R"]: self.reward += .1
-        
+            #if true_action in ["L","R"]: self.reward += .5
+        else:
+            if index_to_direc[self.act_index] in["L","R"] and true_action in ["L","R"]:
+                self.reward -= 1
+            else:
+                self.reward -=.5
+       
         #q_list = self.q_values[tuple(self.prev_acts)]
         q_list = self.q_values[tuple(self.prev_state)]
 

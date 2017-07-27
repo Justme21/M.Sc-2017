@@ -160,24 +160,29 @@ def makeDataList(location):
 
     return data_list
 
+
 def runSimulation(markov_model,learner,num_ep,num_it,look_back):
     learner_action = None
     count_wrong = 0
     cross_section = [[0,0,0],[0,0,0],[0,0,0]] 
 
-    np.random.seed(4)
-    random.seed(4)
-    true_to_state,_ = markov_model.simulate(None)
-    learner.initialise(true_to_state)
+    np.random.seed(num_ep)
+    random.seed(num_ep)
+
+    init_state,episode_data = markov_model.generateData(num_it,np.random.randint(123456))
+
+    learner.initialise(init_state)
+    true_to_state = init_state
     if num_ep%10 == 0: learner.e = 0
-    for i in range(num_it):
-        true_to_state,state = markov_model.simulate(true_to_state)
+    for i,entry in enumerate(episode_data):
+        (true_action_label,state) = episode_data[i]
+        true_to_state = true_to_state[1:] + true_action_label
         learner.sense(state) #First detect the new state
         learner_action = learner.act(markov_model)
         if i>0 :
-            learner.learn(true_to_state[-1])
+            learner.learn(true_action_label)
         learner.callback(num_ep%10!=0,num_ep,i,true_to_state)
-        if learner_action != true_to_state[-1]: 
+        if learner_action != true_action_label: 
             count_wrong += 1
         
         cross_section[index_dict[learner_action]][index_dict[true_to_state[-1]]] += 1
@@ -200,17 +205,10 @@ def runSimulation(markov_model,learner,num_ep,num_it,look_back):
         record_file.close()
     
 
-print("TEST")
-
 #Static Variables for simulation
 look_back = 5
-num_episodes = 2#2000
+num_episodes = 2000
 num_iterations = 7200 #3600 half seconds = 30 minutes
-
-#Seed the random number generators so that we can compre results from different
-# learners
-random.seed(123454321)
-np.random.seed(234565432)
 
 #Crawls the directory tree and finds all the files with annotated data
 sources = getDirectories()
@@ -237,7 +235,7 @@ markov_model.finishAdd()
 
 #Open Accuracy tracker file once here in "write" mode to wipe the old version of the 
 # file. Later writes are in append mode, which does not overwrite.
-record_file = open("test-Accuracy_track_{}_2.txt".format(look_back),"w")
+record_file = open("test-Accuracy_track_{}.txt".format(look_back),"w")
 record_file.close()
 
 #Simulate the specified number of episodes
@@ -259,9 +257,11 @@ count_dict = {True:0,False:0}
 #Confusion matrix for the test data
 test_cross_section = [[0,0,0],[0,0,0],[0,0,0]]
 
-random.seed(27)
-np.random.seed(27)
-for _ in range(2): #Run twice since each entry in datalist is only half a journey 
+
+rand_seed = 1234543
+for i in range(2): #Run twice since each entry in datalist is only half a journey 
+    random.seed(rand_seed*i)
+    np.random.seed(rand_seed*i)
     #Randomly selected run from the data list
     [test_data,annotation] = data_list[random.randint(0,len(data_list)-1)]
     #The learner marks the start of runs by a 0 initially in the sequence

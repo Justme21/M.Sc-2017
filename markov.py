@@ -101,8 +101,9 @@ class MarkovModel():
 
     def simulate(self,from_state=None):
         if from_state == None:
-            action_set = [x for x in self.state_dict_list.keys() if "0" in x]
-            return np.random.choice(action_set),None
+            action_set = sorted([x for x in self.state_dict_list.keys() if "0" in x])
+            index = np.random.randint(0,len(action_set)-1)
+            return action_set[index],None
         else:
             num = np.random.random()
             action_dict = self.cumulProb(self.state_dict_list[from_state])
@@ -110,3 +111,14 @@ class MarkovModel():
                 if num<action_dict[to_state]: 
                     params = self.state_action_dict[from_state][to_state]
                     return to_state,self.sampleAction(params)
+
+
+    def generateData(self,num_iterations,rand_seed):
+        np.random.seed(rand_seed)
+        datalist = []
+        init_state,_ = self.simulate(None)
+        from_state = init_state
+        for _ in range(num_iterations):
+            from_state,action_data = self.simulate(from_state)
+            datalist.append((from_state[-1],action_data))
+        return init_state,datalist
