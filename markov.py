@@ -1,4 +1,5 @@
 #!/usr/bin/python
+import math
 import numpy as np
 
 class MarkovModel():
@@ -68,7 +69,11 @@ class MarkovModel():
                 std = []
                 for i in range(len(state_samples[0])):
                     average.append(np.mean([x[i] for x in state_samples]))
-                    std.append(np.std([x[i] for x in state_samples]))
+                    if len(state_samples)>1:
+                        std.append(np.std([x[i] for x in state_samples]))
+                    else:
+                        #Default, non-zero standard deviation used to ensure operation
+                        std.append(math.fabs(average[i])/10)
                 self.state_action_dict[from_state][to_state] = (list(average),list(std))
 
 

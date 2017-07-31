@@ -80,6 +80,11 @@ class DataStore():
         if self.index<0: self.index = 0
         self.time = self.file_content[self.index][0]
 
+
+    def rescale(self):
+        """Rescales the data in the datastore for use in the feature learner"""
+        for i,entry in enumerate(self.file_content):
+            self.file_content[i] = [entry[0]]+[2.0/(1+math.exp(-.5*x)) - 1 for x in entry[1:]]
     
     def rehab(self):
         """Cleans the PROC_LANE_DETECTION data and imputes missing values.

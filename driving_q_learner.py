@@ -30,7 +30,7 @@ class DrivingLearner():
         #e for epsilon-greedy action selection
         self.e = .05
         #gamma = look ahead parameter. Want as high as possible
-        self.gam = .95#.9999
+        self.gam = .9999
         #alpha = learning parameter, how much the current signal affects value function
         self.alph = 1
 
@@ -63,37 +63,39 @@ class DrivingLearner():
 
         #First part of the state will be the last look_back-1 states we were in
         #state += list(self.prev_acts[1:])
-        #state += self.prev_acts[-1] #only include the last action performed. Less information than was used to generate the data       
+        state += self.prev_acts[-1] #only include the last action performed. Less information than was used to generate the data       
 
         #Binary values for the entries in the state relating to acceleration  
         #Only use first 3 accelerations to reduce state space       
-       # for i in range(3):
-       #     state.append(cur_state[i]>0)
-        state.append(cur_state[1]>0)
+        for i in range(3):
+            state.append(cur_state[i]>0)
+        #state.append(cur_state[1]>0)
 
         #The values for car position and road width are all
         # in the 1.5-3 region
-        #for i in [6,8]:
-        #    state.append(int(cur_state[i]))
+        for i in [6,8]:
+            state.append(int(cur_state[i]))
 
         #Distance to car in front can be -1 which should be a separate state
         state.append(min(int(cur_state[9]),int(cur_state[9]/20))) #dist to car
-        #state.append(min(int(cur_state[10]),int(cur_state[10]/10))) #time to collision
-        #state.append(int(cur_state[11])) #number of cars on road
-        #state.append(int(cur_state[12]/40)) #GPS-speed
+        state.append(min(int(cur_state[10]),int(cur_state[10]/10))) #time to collision
+        state.append(int(cur_state[11])) #number of cars on road
+        state.append(int(cur_state[12]/40)) #GPS-speed
 
         #Relative variables
-        #for i in range(3):
-        #    state.append((cur_state[i]-self.state_copy[i])>0)
-        state.append((cur_state[1]-self.state_copy[1])>0)
+        for i in range(3):
+            state.append((cur_state[i]-self.state_copy[i])>0)
+        #state.append((cur_state[1]-self.state_copy[1])>0)
 
         #Ratio of distance from left over distance from right
         #There are issues with this since the readings are approx
         #Might not be worth keeping
-        #z_t = cur_state[6]
-        #z_l = (cur_state[8]/2)+z_t-(self.car_width/2)
-        #z_r = (cur_state[8]/2)-z_t-(self.car_width/2)
-        #state.append(int((z_l/z_r)))
+        z_t = cur_state[6]
+        z_l = (cur_state[8]/2)+z_t-(self.car_width/2)
+        z_r = (cur_state[8]/2)-z_t-(self.car_width/2)
+        if z_l == 0: z_l = .001
+        if z_r == 0: z_r = .001
+        state.append(int((z_l/z_r)))
         
         #Return tuple since tuples can be used as keys for dictionaries
         return tuple(state)    
@@ -205,11 +207,11 @@ class DrivingLearner():
            rewarded. Due to the overwhelming majority "F" has, if the correctly predicted 
            action was a turn then we further reward this to incentivise selecting turns"""
         if index_to_direc[self.act_index] == true_action:
-            self.reward += 1
-            #if true_action in ["L","R"]: self.reward += .5
+            self.reward += .5
+            if true_action in ["L","R"]: self.reward += 8.5
         else:
             if index_to_direc[self.act_index] in["L","R"] and true_action in ["L","R"]:
-                self.reward -= 1
+                self.reward -= 1.5
             else:
                 self.reward -=.5
        

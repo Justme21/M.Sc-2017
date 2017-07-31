@@ -3,6 +3,8 @@
 from markov import MarkovModel
 from driving_q_learner import DrivingLearner
 from datastore import DataStore
+from RL_2_0 import FeatureLearner
+
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -173,41 +175,35 @@ def runSimulation(markov_model,learner,num_ep,num_it,look_back):
 
     learner.initialise(init_state)
     true_to_state = init_state
-    if num_ep%10 == 0: learner.e = 0
     for i,entry in enumerate(episode_data):
         (true_action_label,state) = episode_data[i]
         true_to_state = true_to_state[1:] + true_action_label
         learner.sense(state) #First detect the new state
-        learner_action = learner.act(markov_model)
+        learner_action = learner.act(true_action_label)
         if i>0 :
             learner.learn(true_action_label)
-        learner.callback(num_ep%10!=0,num_ep,i,true_to_state)
+        #learner.callback(num_ep%10!=0,num_ep,i,true_to_state)
         if learner_action != true_action_label: 
             count_wrong += 1
         
         cross_section[index_dict[learner_action]][index_dict[true_to_state[-1]]] += 1
+        explosion_test = learner.explosionCheck()
+        if explosion_test: break
 
-    if num_ep%10 == 0:
-        #rule_file = open("test-Rules_Learnt_{}.txt".format(look_back),"w")
-        record_file = open("test-Accuracy_track_{}_2.txt".format(look_back),"a")
-        
+    if num_ep%10 == 0 or explosion_test:
         print("CROSS SECTION: {}".format(num_ep))
         for entry in cross_section:
             print(entry)       
         print("")
+        if explosion_test:
+            print("{}|{}: Program ended due to Explosion at {}".format(num_ep,i,explosion_test))
+            exit(-1) 
+            
 
-        #rule_dict = learner.getRules()
-        #for entry in rule_dict:
-        #    rule_file.write("{} -> {}\n".format(entry,rule_dict[entry]))
-        #rule_file.close()
-        
-        record_file.write("{}\t{}\t{}\n".format(num_ep,count_wrong,count_wrong*1.0/num_it))
-        record_file.close()
-    
 
 #Static Variables for simulation
 look_back = 5
-num_episodes = 2000
+num_episodes = 3000
 num_iterations = 7200 #3600 half seconds = 30 minutes
 
 #Crawls the directory tree and finds all the files with annotated data
@@ -223,7 +219,7 @@ for entry in sources:
 
 #Initialise the Markov Model data simulator and the driving learner
 markov_model = MarkovModel(look_back)
-learner = DrivingLearner(look_back)
+learner = FeatureLearner(look_back)
 
 #Feed the data to the simulator so it can create simulations
 for entry in data_list:
@@ -232,11 +228,6 @@ for entry in data_list:
 #After data input distributions over different actions are generated. This
 # is done in finishAdd
 markov_model.finishAdd()
-
-#Open Accuracy tracker file once here in "write" mode to wipe the old version of the 
-# file. Later writes are in append mode, which does not overwrite.
-record_file = open("test-Accuracy_track_{}.txt".format(look_back),"w")
-record_file.close()
 
 #Simulate the specified number of episodes
 for i in range(1,num_episodes+1):
@@ -279,14 +270,18 @@ for i in range(2): #Run twice since each entry in datalist is only half a journe
         test_cross_section[index_dict[learner_action]][index_dict[annote]] += 1
         init_state = init_state[1:]+[annote] #revise state
         #Pass False to indicate learner should not be learning here
-        learner.callback(False,None,None,init_state)
+        #learner.callback(False,None,None,init_state)
 
+
+print("WEIGHTS: {}\n".format(learner.weights))
 
 print("RESULTS: {}".format(look_back))
 print("COUNT_DICT: {}".format(count_dict))
 print("CROSS_SECTION:")
 for entry in test_cross_section:
     print(entry)
+
+print("REWARDS: {}".format(sim_reward_list))
 
 plt.plot(sim_reward_list)
 plt.title("Reward achieved for learner with {} Look Back".format(look_back))

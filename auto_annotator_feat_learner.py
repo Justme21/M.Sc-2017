@@ -1,49 +1,9 @@
 #!/usr/bin/python
 
+from datastore import Datastore
 import math
 import matplotlib.pyplot as plt
 import random
-
-class DataStore():
-
-    def __init__(self,file_name,content_list):
-        self.name = file_name #This is the full address of datasource
-        self.file_content = [] #Will hold the desired contents from the file
-        op_file = open("{}".format(file_name))
-        if content_list is []:
-            content_list = [i for i in range(len(op_file[0].split()))]
-        for entry in op_file: #Iterate through the rows in the file
-            #We only include the entries corresponding to the 0-indexed columns specified in content_list
-            entry = [float(x) for i,x in enumerate(entry.split()) if i in content_list]
-            self.file_content.append(entry)
-
-        self.time = self.file_content[0][0] #Initially set to first entry in the timestamp
-        self.index = 0
-
-
-    def getAll(self,i):
-        tot_list = []
-        for row in self.file_content:
-            if -9 not in row: #This is a sloppy way to omit the problem entries in PROC_LANE_DETECTION
-                tot_list.append(row[i])
-
-        return tot_list
-
-
-    def getRow(self):
-        return self.file_content[self.index]
-
-
-    def advance(self):
-        self.index+=1
-        if self.index==len(self.file_content): self.index = None
-        else:
-            self.time = self.file_content[self.index][0]
-
-
-    def rescale(self):
-        for i,entry in enumerate(self.file_content):
-            self.file_content[i] = [entry[0]]+[2.0/(1+math.exp(-.5*x)) - 1 for x in entry[1:]]
 
 class ChangeLearner():
 
