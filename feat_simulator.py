@@ -173,7 +173,7 @@ def runSimulation(markov_model,learner,num_ep,num_it,look_back):
 
     init_state,episode_data = markov_model.generateData(num_it,np.random.randint(123456))
 
-    learner.initialise(init_state)
+    learner.initialise(init_state,num_ep)
     true_to_state = init_state
     for i,entry in enumerate(episode_data):
         (true_action_label,state) = episode_data[i]
@@ -197,6 +197,7 @@ def runSimulation(markov_model,learner,num_ep,num_it,look_back):
         print("")
         if explosion_test:
             print("{}|{}: Program ended due to Explosion at {}".format(num_ep,i,explosion_test))
+            print(learner.weights)
             exit(-1) 
             
 

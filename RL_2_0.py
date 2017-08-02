@@ -20,16 +20,19 @@ class FeatureLearner():
         self.window = [None for _ in range(look_back)]
         #self.last_moves = [None for _ in range(look_back)]
 
-        self.alpha = .000001
+        self.alpha = .01
         self.gamma = .99
+        self.e = .05
         self.car_width = 1.75
 
         self.action_list = ["L","F","R"]
         self.reward_list = []
 
 
-    def initialise(self,init_state):
+    def initialise(self,init_state,episode_num):
         self.reward_list.append(self.reward)
+        self.alpha = .01 + 1.0/episode_num
+        self.e = 1.0/episode_num
         #self.last_moves = list(init_state[1:])
 
 
@@ -67,7 +70,7 @@ class FeatureLearner():
         return aug_state
 
     def normalise(self,row):
-        row_sum = sum(row)
+        row_sum = sum([math.fabs(x) for x in row])
         return [x/row_sum for x in row]
 
 
@@ -111,38 +114,51 @@ class FeatureLearner():
         return row_redux
     
 
-    def getMaxQ(self):
+    def getMaxQ(self,gen_act):
         max_q,temp_q,max_act = None,0,0
         if None in self.window:
-            return 0,np.random.choice(["L","F","R"],size=1,replace=False)[0]
+            return 0,self.action_list[np.random.randint(0,3)]
         else:
-            self.setFactors(self.restructure())
-            
+            #self.setFactors(self.restructure())
+            total_state = []
+            for entry in self.window: total_state += entry
+            self.setFactors(total_state)
             for i in np.random.choice(["L","F","R"],size=3,replace=False):
                 temp_q = self.getQ(i)
                 if max_q == None or temp_q>max_q:
                     max_q = temp_q
                     max_act = i
 
+            if gen_act and np.random.random()<self.e:
+                max_act = self.action_list[np.random.randint(0,3)]
+                max_q = self.getQ(max_act)
+
             return max_q,max_act
         
     
     def move(self,act,true_act):
-        reward_sum = 0
+        #True act will be none for the first iteration
         if true_act is None:
             return 0
-        if act == true_act:
-            reward_sum += .0002
-        if act+true_act in ["RL","LR"]:
-            reward_sum += .0001
-#        if act != true_act and act+true_act not in ["RL","LR"]:
-#           reward_sum = -.04
-        return reward_sum
+        #Guess a turn correctly
+        #elif act == true_act and act in ["R","L"]:
+        #    return 4
+        #Guessing a straight correctly is worth less because it's the popular answer
+        elif act == true_act:
+            return 1
+        #Guessing straight when turning or guessing the wrong turn could both be catastrophic
+        elif act!=true_act and act+true_act in ["RL","LR"]:
+            return -2
+        elif act == "F" and true_act in ["R","L"]:
+            return -3
+        #Guessing a turn when it's straight is also bad, but arguably less so... maybe (hard to defend this rule)
+        elif act in ["R","L"] and true_act == "F":
+            return -1
 
 
     def act(self,true_act,learning=True):
         self.last_q = self.q        
-        self.q,max_act = self.getMaxQ()
+        self.q,max_act = self.getMaxQ(True)
         if learning:
             self.reward = self.move(max_act,true_act)
             self.total_reward += self.reward
@@ -152,9 +168,13 @@ class FeatureLearner():
 
     def learn(self,act):
         if None not in self.window:
-            err_mag = self.alpha*(self.reward+self.gamma*(self.getMaxQ()[0]) - self.last_q)
+            weight_sum = 0
+            err_mag = self.alpha*(self.reward+self.gamma*(self.getMaxQ(False)[0]) - self.last_q)
             for i in range(len(self.weights[act])):
                 self.weights[act][i] += err_mag*self.factors[i]
+                weight_sum += math.fabs(self.weights[act][i])
+            self.weights[act] = [x/weight_sum for x in self.weights[act]]
+
 
 
     def explosionCheck(self):
