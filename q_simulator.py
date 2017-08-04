@@ -207,7 +207,7 @@ def runSimulation(markov_model,learner,num_ep,num_it,look_back):
 
 #Static Variables for simulation
 look_back = 5
-num_episodes = 6000
+num_episodes = 2000
 num_iterations = 7200 #3600 half seconds = 30 minutes
 
 #Crawls the directory tree and finds all the files with annotated data

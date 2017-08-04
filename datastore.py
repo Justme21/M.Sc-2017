@@ -18,6 +18,10 @@ class DataStore():
             #We only include the entries corresponding to the 0-indexed columns specified in content_list
             entry = [float(x) for i,x in enumerate(entry.split()) if i in content_list]
 
+            if "VEHICLE_DETECTION" in self.name and (entry[1] ==-1 and entry[2]==-1):
+                entry[1] = 50
+                entry[2] = 2.5
+
             #-9 is a default value for the detectors and, given the scale of the data
             if -9.0 not in entry:
                 self.file_content.append(entry)

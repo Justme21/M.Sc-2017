@@ -20,7 +20,7 @@ class FeatureLearner():
         self.window = [None for _ in range(look_back)]
         #self.last_moves = [None for _ in range(look_back)]
 
-        self.alpha = .01
+        self.alpha = .0000000001
         self.gamma = .99
         self.e = .05
         self.car_width = 1.75
@@ -28,6 +28,7 @@ class FeatureLearner():
         self.action_list = ["L","F","R"]
         self.reward_list = []
 
+        self.feature_active = {}
 
     def initialise(self,init_state,episode_num):
         self.reward_list.append(self.reward)
@@ -90,14 +91,21 @@ class FeatureLearner():
         self.weights = {}
         for act in self.action_list:
             self.weights[act] = [.1 for _ in self.factors]
+            self.feature_active[act] = [1 for _ in range(len(self.factors))]
 
 
     def getQ(self,act):
         q_sum = 0
         for (weight,factor) in zip(self.weights[act],self.factors):
             q_sum += weight*factor
-
-        return q_sum        
+ 
+        print("Q_SUM: {}\t{}".format(q_sum,act))
+        print("WEIGHT: {}".format(self.weights[act]))
+        print("FACTORS: {}\n\n".format(self.factors))
+        try:
+            return math.exp(-q_sum)
+        except:
+            exit(-1)
 
     
     def restructure(self):
@@ -145,15 +153,15 @@ class FeatureLearner():
         #    return 4
         #Guessing a straight correctly is worth less because it's the popular answer
         elif act == true_act:
-            return 1
+            return .0001
         #Guessing straight when turning or guessing the wrong turn could both be catastrophic
         elif act!=true_act and act+true_act in ["RL","LR"]:
-            return -2
+            return -.0004
         elif act == "F" and true_act in ["R","L"]:
-            return -3
+            return -.0010
         #Guessing a turn when it's straight is also bad, but arguably less so... maybe (hard to defend this rule)
         elif act in ["R","L"] and true_act == "F":
-            return -1
+            return -.0002
 
 
     def act(self,true_act,learning=True):
@@ -171,9 +179,10 @@ class FeatureLearner():
             weight_sum = 0
             err_mag = self.alpha*(self.reward+self.gamma*(self.getMaxQ(False)[0]) - self.last_q)
             for i in range(len(self.weights[act])):
-                self.weights[act][i] += err_mag*self.factors[i]
-                weight_sum += math.fabs(self.weights[act][i])
-            self.weights[act] = [x/weight_sum for x in self.weights[act]]
+                #self.weights[act][i] += self.feature_active[act][i]*err_mag*self.factors[i]
+                self.weights[act][i] -= self.feature_active[act][i]*err_mag*self.factors[i]*self.last_q
+                #weight_sum += math.fabs(self.weights[act][i])
+            #self.weights[act] = [x/weight_sum for x in self.weights[act]]
 
 
 
@@ -181,9 +190,19 @@ class FeatureLearner():
         if self.weights is not None:
             for act in self.weights:
                 for i,entry in enumerate(self.weights[act]):
-                    if np.isnan(entry) or entry>100000: return i
+                    if np.isnan(entry) or entry>100000: 
+                        self.feature_active[act][i] = 0
+                        self.weights[act][i] = 0
+                        print("Removing {}, {} features remaining.".format(i,sum(self.feature_active[act])))
+                        #return i
         return False
 
+    def featureCheck(self):
+        for entry in self.feature_active:
+            print("ACT: {}\t".format(entry),end='')
+            for i in range(len(self.feature_active[entry])):
+                if self.feature_active[entry][i]: print("{}, ".format(i),end='')
+            print("")
 
 def scaleAndChangeBase(dataset,n_comp = None):
     dataset = preprocessing.StandardScaler().fit_transform(dataset)

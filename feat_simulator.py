@@ -193,7 +193,8 @@ def runSimulation(markov_model,learner,num_ep,num_it,look_back):
     if num_ep%10 == 0 or explosion_test:
         print("CROSS SECTION: {}".format(num_ep))
         for entry in cross_section:
-            print(entry)       
+            print(entry)
+        learner.featureCheck()    
         print("")
         if explosion_test:
             print("{}|{}: Program ended due to Explosion at {}".format(num_ep,i,explosion_test))
