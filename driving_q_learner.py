@@ -63,7 +63,8 @@ class DrivingLearner():
 
         #First part of the state will be the last look_back-1 states we were in
         #state += list(self.prev_acts[1:])
-        state += self.prev_acts[-1] #only include the last action performed. Less information than was used to generate the data       
+        state += self.prev_acts[-2:]
+        #state += self.prev_acts[-1] #only include the last action performed. Less information than was used to generate the data       
 
         #Binary values for the entries in the state relating to acceleration  
         #Only use first 3 accelerations to reduce state space       
@@ -78,8 +79,8 @@ class DrivingLearner():
 
         #Distance to car in front can be -1 which should be a separate state
         state.append(min(int(cur_state[9]),int(cur_state[9]/20))) #dist to car
-        state.append(min(int(cur_state[10]),int(cur_state[10]/10))) #time to collision
-        state.append(int(cur_state[11])) #number of cars on road
+        #state.append(min(int(cur_state[10]),int(cur_state[10]/10))) #time to collision
+        #state.append(int(cur_state[11])) #number of cars on road
         state.append(int(cur_state[12]/40)) #GPS-speed
 
         #Relative variables
@@ -90,12 +91,12 @@ class DrivingLearner():
         #Ratio of distance from left over distance from right
         #There are issues with this since the readings are approx
         #Might not be worth keeping
-        z_t = cur_state[6]
-        z_l = (cur_state[8]/2)+z_t-(self.car_width/2)
-        z_r = (cur_state[8]/2)-z_t-(self.car_width/2)
-        if z_l == 0: z_l = .001
-        if z_r == 0: z_r = .001
-        state.append(int((z_l/z_r)))
+        #z_t = cur_state[6]
+        #z_l = (cur_state[8]/2)+z_t-(self.car_width/2)
+        #z_r = (cur_state[8]/2)-z_t-(self.car_width/2)
+        #if z_l == 0: z_l = .001
+        #if z_r == 0: z_r = .001
+        #state.append(int((z_l/z_r)))
         
         #Return tuple since tuples can be used as keys for dictionaries
         return tuple(state)    
@@ -147,21 +148,6 @@ class DrivingLearner():
 
         return act
 
-    #def move(self,act_seq,model):
-    #    """Called during simulation. act_seq is a list of the last self.look_back actions that
-    #       actually occurred. Calculates the reward that the learner's action choice should
-    #       return"""
-    #    prob_dict = model.getProb(''.join(self.prev_acts))
-    #    if ''.join(act_seq) in prob_dict:
-    #        # We want to incentivise the learner for selecting more probable actions
-    #        action_prob = prob_dict[''.join(act_seq)]
-    #        max_prob = max([prob_dict[x] for x in prob_dict if x != "count"])
-    #        return 1-(max_prob-action_prob)
-    #    else:
-    #        #If the sequence does not have a probability assigned then it is not a legal
-    #        # move and should be severely penalised
-    #        return -1
-
 
     def act(self,model,learning=True):
         """Called during simulation. Returns the action that the learner chooses to perform"""
@@ -181,8 +167,6 @@ class DrivingLearner():
         #Revise the definition of cur_acts to include the most recent action
         self.cur_acts = self.prev_acts[1:] + [action]
         #If we are not learning we don't want to calculate or store rewards
-    #    if learning == True:
-    #        self.reward = self.move(tuple(self.cur_acts),model) 
         return action
 
 
