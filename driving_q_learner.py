@@ -62,40 +62,40 @@ class DrivingLearner():
             self.state_copy = [0 for _ in range(3)]
 
         #First part of the state will be the last look_back-1 states we were in
-        state += list(self.prev_acts[1:])
-        #state += self.prev_acts[-1] #only include the last action performed. Less information than was used to generate the data       
+        #state += list(self.prev_acts[1:])
+        state += self.prev_acts[-1] #only include the last action performed. Less information than was used to generate the data       
 
         #Binary values for the entries in the state relating to acceleration  
         #Only use first 3 accelerations to reduce state space       
-        #for i in range(3):
-        #    state.append(cur_state[i]>0)
+        for i in range(3):
+            state.append(cur_state[i]>0)
         #state.append(cur_state[1]>0)
 
         #The values for car position and road width are all
         # in the 1.5-3 region
-        #for i in [6,8]:
-        #    state.append(int(cur_state[i]))
+        for i in [6,8]:
+            state.append(int(cur_state[i]))
 
         #Distance to car in front can be -1 which should be a separate state
-        #state.append(min(int(cur_state[9]),int(cur_state[9]/20))) #dist to car
-        #state.append(min(int(cur_state[10]),int(cur_state[10]/10))) #time to collision
-        #state.append(int(cur_state[11])) #number of cars on road
-        #state.append(int(cur_state[12]/40)) #GPS-speed
+        state.append(min(int(cur_state[9]),int(cur_state[9]/20))) #dist to car
+        state.append(min(int(cur_state[10]),int(cur_state[10]/10))) #time to collision
+        state.append(int(cur_state[11])) #number of cars on road
+        state.append(int(cur_state[12]/40)) #GPS-speed
 
         #Relative variables
-        #for i in range(3):
-        #    state.append((cur_state[i]-self.state_copy[i])>0)
-        #state.append((cur_state[1]-self.state_copy[1])>0)
+        for i in range(3):
+            state.append((cur_state[i]-self.state_copy[i])>0)
+        state.append((cur_state[1]-self.state_copy[1])>0)
 
         #Ratio of distance from left over distance from right
         #There are issues with this since the readings are approx
         #Might not be worth keeping
-        #z_t = cur_state[6]
-        #z_l = (cur_state[8]/2)+z_t-(self.car_width/2)
-        #z_r = (cur_state[8]/2)-z_t-(self.car_width/2)
-        #if z_l == 0: z_l = .001
-        #if z_r == 0: z_r = .001
-        #state.append(int((z_l/z_r)))
+        z_t = cur_state[6]
+        z_l = (cur_state[8]/2)+z_t-(self.car_width/2)
+        z_r = (cur_state[8]/2)-z_t-(self.car_width/2)
+        if z_l == 0: z_l = .001
+        if z_r == 0: z_r = .001
+        state.append(int((z_l/z_r)))
         
         #Return tuple since tuples can be used as keys for dictionaries
         return tuple(state)    
@@ -147,20 +147,21 @@ class DrivingLearner():
 
         return act
 
-    def move(self,act_seq,model):
-        """Called during simulation. act_seq is a list of the last self.look_back actions that
-           actually occurred. Calculates the reward that the learner's action choice should
-           return"""
-        prob_dict = model.getProb(''.join(self.prev_acts))
-        if ''.join(act_seq) in prob_dict:
-            # We want to incentivise the learner for selecting more probable actions
-            action_prob = prob_dict[''.join(act_seq)]
-            max_prob = max([prob_dict[x] for x in prob_dict if x != "count"])
-            return 1-(max_prob-action_prob)
-        else:
-            #If the sequence does not have a probability assigned then it is not a legal
-            # move and should be severely penalised
-            return -1
+    #def move(self,act_seq,model):
+    #    """Called during simulation. act_seq is a list of the last self.look_back actions that
+    #       actually occurred. Calculates the reward that the learner's action choice should
+    #       return"""
+    #    prob_dict = model.getProb(''.join(self.prev_acts))
+    #    if ''.join(act_seq) in prob_dict:
+    #        # We want to incentivise the learner for selecting more probable actions
+    #        action_prob = prob_dict[''.join(act_seq)]
+    #        max_prob = max([prob_dict[x] for x in prob_dict if x != "count"])
+    #        return 1-(max_prob-action_prob)
+    #    else:
+    #        #If the sequence does not have a probability assigned then it is not a legal
+    #        # move and should be severely penalised
+    #        return -1
+
 
     def act(self,model,learning=True):
         """Called during simulation. Returns the action that the learner chooses to perform"""
@@ -180,10 +181,10 @@ class DrivingLearner():
         #Revise the definition of cur_acts to include the most recent action
         self.cur_acts = self.prev_acts[1:] + [action]
         #If we are not learning we don't want to calculate or store rewards
-        if learning == True:
-            self.reward = self.move(tuple(self.cur_acts),model) 
-            self.total_reward += self.reward
+    #    if learning == True:
+    #        self.reward = self.move(tuple(self.cur_acts),model) 
         return action
+
 
     def sense(self,state):
         """Takes the raw markov model output as input and from this generates the 
@@ -200,21 +201,40 @@ class DrivingLearner():
         self.state_copy = tuple(state)
 
 
+    def getReward(self,action,true_action):
+        reward = 0
+        if action == true_action:
+            reward += .5
+            if true_action in ["L","R"]: reward += 8.5
+        else:
+            if action in ["L","R"] and true_action in ["L","R"]:
+                reward -= 1.5
+            else:
+                reward -=.5
+
+        return reward
+
+
     def learn(self,true_action):
         """Defines how learning is performed by the learner. In particular self.reward is 
            already initialised in move() where we reward the learner choosing the most
            probably action. Now if the action was also the correct action this is further
            rewarded. Due to the overwhelming majority "F" has, if the correctly predicted 
            action was a turn then we further reward this to incentivise selecting turns"""
-        if index_to_direc[self.act_index] == true_action:
-            self.reward += .5
-            if true_action in ["L","R"]: self.reward += 8.5
-        else:
-            if index_to_direc[self.act_index] in["L","R"] and true_action in ["L","R"]:
-                self.reward -= 1.5
-            else:
-                self.reward -=.5
-       
+
+
+        #This should be the only place in the program where reward is specified
+        self.reward = self.getReward(index_to_direc[self.act_index],true_action)
+        #The max possible reward that could have been attained is one that guessed the action correctly
+        max_reward = self.getReward(true_action,true_action)
+        #Scale the recorded reward plotted to make it more interpretible. 
+        #1 is now the max that can be received in any iteration
+        if max_reward != 0: 
+            self.reward/=max_reward
+     
+        self.total_reward += self.reward
+            
+        
         #q_list = self.q_values[tuple(self.prev_acts)]
         q_list = self.q_values[tuple(self.prev_state)]
 

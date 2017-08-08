@@ -188,22 +188,11 @@ def runSimulation(markov_model,learner,num_ep,num_it,look_back):
         cross_section[index_dict[learner_action]][index_dict[true_to_state[-1]]] += 1
 
     #if num_ep%10 == 0:
-        #rule_file = open("test-Rules_Learnt_{}.txt".format(look_back),"w")
-        #record_file = open("Accuracy_track_{}.txt".format(look_back),"a")
-        
         #print("CROSS SECTION: {}".format(num_ep))
         #for entry in cross_section:
         #    print(entry)       
         #print("")
 
-        #rule_dict = learner.getRules()
-        #for entry in rule_dict:
-        #    rule_file.write("{} -> {}\n".format(entry,rule_dict[entry]))
-        #rule_file.close()
-        
-        #record_file.write("{}\t{}\t{}\n".format(num_ep,count_wrong,count_wrong*1.0/num_it))
-        #record_file.close()
-    
 
 #Static Variables for simulation
 look_back = 5
@@ -233,11 +222,6 @@ for entry in data_list:
 # is done in finishAdd
 markov_model.finishAdd()
 
-#Open Accuracy tracker file once here in "write" mode to wipe the old version of the 
-# file. Later writes are in append mode, which does not overwrite.
-record_file = open("Accuracy_track_{}.txt".format(look_back),"w")
-record_file.close()
-
 #Simulate the specified number of episodes
 for i in range(1,num_episodes+1):
     runSimulation(markov_model,learner,i,num_iterations,look_back)
@@ -248,7 +232,7 @@ for i in range(1,num_episodes+1):
 learner.reward_list.append(learner.total_reward)
 
 #Copy reward list so that testing does not affect printed results
-sim_reward_list = list(learner.reward_list)
+sim_reward_list = list(learner.reward_list[1:])
 
 #Dictionary used to keep track of how many actions the learner predicts correctly
 # (True) vs. incorrectly (False)
@@ -288,7 +272,7 @@ print("CROSS_SECTION:")
 for entry in test_cross_section:
     print(entry)
 
-print("REWARDS: {}".format(sim_reward_list))
+print("REWARDS: {}".format([x*1.0/num_iterations for x in sim_reward_list]))
 
 #plt.plot(sim_reward_list)
 #plt.title("Reward achieved for learner with {} Look Back".format(look_back))

@@ -90,7 +90,7 @@ class FeatureLearner():
     def setWeights(self):
         self.weights = {}
         for act in self.action_list:
-            self.weights[act] = [.1 for _ in self.factors]
+            self.weights[act] = [-5*np.random.random()+5 for _ in self.factors] #[.1 for _ in self.factors]
             self.feature_active[act] = [1 for _ in range(len(self.factors))]
 
 
@@ -99,12 +99,13 @@ class FeatureLearner():
         for (weight,factor) in zip(self.weights[act],self.factors):
             q_sum += weight*factor
  
-        print("Q_SUM: {}\t{}".format(q_sum,act))
-        print("WEIGHT: {}".format(self.weights[act]))
-        print("FACTORS: {}\n\n".format(self.factors))
+        #print("Q_SUM: {}\t{}".format(q_sum,act))
+        #print("WEIGHT: {}".format(self.weights[act]))
+        #print("FACTORS: {}\n\n".format(self.factors))
         try:
-            return math.exp(-q_sum)
+            return q_sum#math.exp(-q_sum)
         except:
+            print("BOOM")
             exit(-1)
 
     

@@ -205,7 +205,7 @@ def runSimulation(markov_model,learner,num_ep,num_it,look_back):
 
 #Static Variables for simulation
 look_back = 5
-num_episodes = 3000
+num_episodes = 200
 num_iterations = 7200 #3600 half seconds = 30 minutes
 
 #Crawls the directory tree and finds all the files with annotated data
@@ -241,7 +241,7 @@ for i in range(1,num_episodes+1):
 learner.reward_list.append(learner.total_reward)
 
 #Copy reward list so that testing does not affect printed results
-sim_reward_list = list(learner.reward_list)
+sim_reward_list = list(learner.reward_list[1:])
 
 #Dictionary used to keep track of how many actions the learner predicts correctly
 # (True) vs. incorrectly (False)
