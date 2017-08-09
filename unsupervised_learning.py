@@ -1,11 +1,17 @@
 #!/usr/bin/python
 
+
+from sklearn.cluster import AffinityPropagation
+from sklearn import metrics
+from sklearn.mixture import GaussianMixture
 from datastore import DataStore
-from scipy.cluster.hierarchy import dendrogram,fcluster,linkage
+from scipy.cluster.hierarchy import dendrogram,fcluster,inconsistent,linkage
 from sklearn import decomposition,manifold,preprocessing
 from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_samples, silhouette_score
 import math
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import numpy as np
 import os,re
 
@@ -224,8 +230,221 @@ def makeWindows(dataset,annotation,granularity,time_width=5,overlap=1):
     return windowed_dataset,windowed_annotation
 
 
+def KMeansTest(cluster_dataset,cluster_anno):
+
+    n_clusters = 2
+
+    range_n_clusters = [2,3]
+
+    silhouette_avg = silhouette_score(cluster_dataset, cluster_anno)
+    print("Basic silhouette average on data is: {}".format(silhouette_avg))
+
+    for n_clusters in range_n_clusters:
+        # Create a subplot with 1 row and 2 columns
+        fig, (ax1, ax2) = plt.subplots(1, 2)
+       #fig, (ax1) = plt.subplots(1, 1)
+        fig.set_size_inches(18, 7)
+
+        # The 1st subplot is the silhouette plot
+        # The silhouette coefficient can range from -1, 1 but in this example all
+        # lie within [-0.1, 1]
+        ax1.set_xlim([-0.1, 1])
+        # The (n_clusters+1)*10 is for inserting blank space between silhouette
+        # plots of individual clusters, to demarcate them clearly.
+        ax1.set_ylim([0, len(cluster_dataset) + (n_clusters + 1) * 10])
+
+        # Initialize the clusterer with n_clusters value and a random generator
+        # seed of 10 for reproducibility.
+        clusterer = KMeans(n_clusters=n_clusters, random_state=10)
+        cluster_labels = clusterer.fit_predict(cluster_dataset)
+
+        # The silhouette_score gives the average value for all the samples.
+        # This gives a perspective into the density and separation of the formed
+        # clusters
+        silhouette_avg = silhouette_score(cluster_dataset, cluster_labels)
+        print("For n_clusters =", n_clusters,
+              "The average silhouette_score is :", silhouette_avg)
+
+        # Compute the silhouette scores for each sample
+        sample_silhouette_values = silhouette_samples(cluster_dataset, cluster_labels)
+
+        y_lower = 10
+        for i in range(n_clusters):
+            # Aggregate the silhouette scores for samples belonging to
+            # cluster i, and sort them
+            ith_cluster_silhouette_values = \
+                sample_silhouette_values[cluster_labels == i]
+
+            ith_cluster_silhouette_values.sort()
+
+            size_cluster_i = ith_cluster_silhouette_values.shape[0]
+            y_upper = y_lower + size_cluster_i
+
+            color = cm.spectral(float(i) / n_clusters)
+            ax1.fill_betweenx(np.arange(y_lower, y_upper),
+                              0, ith_cluster_silhouette_values,
+                                  facecolor=color, edgecolor=color, alpha=0.7)
+
+            # Label the silhouette plots with their cluster numbers at the middle
+            ax1.text(-0.05, y_lower + 0.5 * size_cluster_i, str(i))
+
+            # Compute the new y_lower for next plot
+            y_lower = y_upper + 10  # 10 for the 0 samples
+
+        ax1.set_title("The silhouette plot for the various clusters.")
+        ax1.set_xlabel("The silhouette coefficient values")
+        ax1.set_ylabel("Cluster label")
+
+        # The vertical line for average silhouette score of all the values
+        ax1.axvline(x=silhouette_avg, color="red", linestyle="--")
+
+        ax1.set_yticks([])  # Clear the yaxis labels / ticks
+        ax1.set_xticks([-0.1, 0, 0.2, 0.4, 0.6, 0.8, 1])
+
+        # 2nd Plot showing the actual clusters formed
+        colors = cm.spectral(cluster_labels.astype(float) / n_clusters)
+        ax2.scatter(cluster_dataset[:, 0], cluster_dataset[:, 1], marker='.', s=30, lw=0, alpha=0.7,
+                    c=colors)
+
+        # Labeling the clusters
+        centers = clusterer.cluster_centers_
+        # Draw white circles at cluster centers
+        ax2.scatter(centers[:, 0], centers[:, 1],
+                    marker='o', c="white", alpha=1, s=200)
+
+        for i, c in enumerate(centers):
+            ax2.scatter(c[0], c[1], marker='$%d$' % i, alpha=1, s=50)
+
+        ax2.set_title("The visualization of the clustered data.")
+        ax2.set_xlabel("Feature space for the 1st feature")
+        ax2.set_ylabel("Feature space for the 2nd feature")
+
+        plt.suptitle(("Silhouette analysis for KMeans clustering on sample data "
+                      "with n_clusters = %d" % n_clusters),
+                     fontsize=14, fontweight='bold')
+
+        plt.show()
+
+        cross_section = [[0 for _ in range(3)] for _ in range(n_clusters)]
+        for lab,true in zip(cluster_labels,cluster_anno):
+            cross_section[int(lab)][index_dict[true]]+=1
+
+        for entry in cross_section:
+            print(entry)
+
+
+def isoMap(dataset,n_comp):
+    isMap = manifold.Isomap(n_neighbors = 10,n_components = n_comp)
+    return isMap.fit_transform(dataset)
+
+
+def KPCA(dataset,kernel,n_comp):
+    kpca = decomposition.KernelPCA(kernel=kernel, n_components = n_comp, gamma=10)
+    return kpca.fit_transform(dataset)    
+
+
+
+def fancy_dendrogram(*args, **kwargs):
+    max_d = kwargs.pop('max_d', None)
+    if max_d and 'color_threshold' not in kwargs:
+        kwargs['color_threshold'] = max_d
+    annotate_above = kwargs.pop('annotate_above', 0)
+
+    ddata = dendrogram(*args, **kwargs)
+
+    if not kwargs.get('no_plot', False):
+        plt.title('Hierarchical Clustering Dendrogram (truncated)')
+        plt.xlabel('sample index or (cluster size)')
+        plt.ylabel('distance')
+        for i, d, c in zip(ddata['icoord'], ddata['dcoord'], ddata['color_list']):
+            x = 0.5 * sum(i[1:3])
+            y = d[1]
+            if y > annotate_above:
+                plt.plot(x, y, 'o', c=c)
+                plt.annotate("%.3g" % y, (x, y), xytext=(0, -5),
+                             textcoords='offset points',
+                             va='top', ha='center')
+        if max_d:
+            plt.axhline(y=max_d, c='k')
+    return ddata
+
+
+def hierarchicalCluster(dataset,cluster_anno):
+    Z = linkage(dataset, 'average')
+    plt.title('Hierarchical Clustering Dendrogram (truncated)')
+    plt.xlabel('sample index')
+    plt.ylabel('distance')
+    depth = 350
+    fancy_dendrogram(
+        Z,
+        truncate_mode='lastp',  # show only the last p merged clusters
+        p=12,  # show only the last p merged clusters
+        show_leaf_counts=False,  # otherwise numbers in brackets are counts
+        leaf_rotation=90.,
+        leaf_font_size=12.,
+        show_contracted=True,  # to get a distribution impression in truncated branches
+        max_d=depth#inconsistent(Z)
+    )
+    plt.show()
+
+    for i in [2,3]:
+        cluster_labels = fcluster(Z, i,criterion='maxclust')
+        cross_section = [[0 for _ in range(3)] for _ in range(len(set(cluster_labels)))]
+        for lab,true in zip(cluster_labels,cluster_anno):
+            cross_section[int(lab)-1][index_dict[true]]+=1
+
+        for entry in cross_section:
+            print(entry)
+        print("")
+
+
+def affinityCluster(dataset,cluster_anno):
+    af = AffinityPropagation(preference=-50).fit(dataset)
+    cluster_centers_indices = af.cluster_centers_indices_
+    cluster_labels = af.labels_
+
+    n_clusters = len(cluster_centers_indices)
+
+    print('Estimated number of clusters: %d' % n_clusters)
+    print("Homogeneity: %0.3f" % metrics.homogeneity_score(cluster_anno, cluster_labels))
+    print("Completeness: %0.3f" % metrics.completeness_score(cluster_anno, cluster_labels))
+    print("V-measure: %0.3f" % metrics.v_measure_score(cluster_anno, cluster_labels))
+    print("Adjusted Rand Index: %0.3f"
+          % metrics.adjusted_rand_score(cluster_anno, cluster_labels))
+    print("Adjusted Mutual Information: %0.3f"
+          % metrics.adjusted_mutual_info_score(cluster_anno, cluster_labels))
+    print("Silhouette Coefficient: %0.3f"
+          % metrics.silhouette_score(dataset, cluster_labels, metric='sqeuclidean'))
+
+
+    cross_section = [[0 for _ in range(3)] for _ in range(n_clusters)]
+    for lab,true in zip(cluster_labels,cluster_anno):
+        cross_section[int(lab)][index_dict[true]]+=1
+
+    for entry in cross_section:
+        print(entry)
+
+
+def GMM(dataset,cluster_anno):
+    for n_clusters in [2,3]:
+        gmm = GaussianMixture(n_components=n_clusters, covariance_type='full').fit(dataset)
+        cluster_labels = gmm.predict(dataset)
+
+        cross_section = [[0 for _ in range(3)] for _ in range(n_clusters)]
+        for lab,true in zip(cluster_labels,cluster_anno):
+            cross_section[int(lab)][index_dict[true]]+=1
+
+        print("AIC: {}".format(gmm.aic(dataset)))
+        print("BIC: {}".format(gmm.bic(dataset)))
+
+        for entry in cross_section:
+            print(entry)
+        print("")
+
+
 index_dict = {"L":0,"F":1,"R":2}
 sources = getDirectories()
+sources = [x for x in sources if "D1" in x or "D2" in x]
 
 data_list,anno_list = [],[]
 temp_list = None
@@ -240,29 +459,23 @@ time_width = 5
 overlap = 10
 window_set,window_anno = makeWindows(data_list,anno_list,granularity,time_width,overlap)
 
-#dataset_np = np.array([entry[1:] for entry in data_list])
-dataset_np = np.array([entry[1:] for entry in window_set])
+n_comp = 3
+
+dataset_np = np.array([entry[1:] for entry in window_set if entry != -10])
+anno_list_np = np.array([entry for entry in window_anno if entry != -10])
+#dataset_np = np.array([entry[1:] for entry in window_set])
+
+#dataset_np = isoMap(dataset_np,n_comp)
+
+#dataset_np = KPCA(dataset_np,"cosine",n_comp)
 
 #scaled_dataset = preprocessing.StandardScaler().fit_transform(dataset_np)
 
-n_comp = 2
-n_clusters = 3
+#KMeansTest(dataset_np,anno_list_np)
+#hierarchicalCluster(dataset_np,anno_list_np)
+#affinityCluster(dataset_np,anno_list_np)
+GMM(dataset_np,anno_list_np)
 
-#isMap = manifold.Isomap(n_neighbors = 10,n_components = n_comp)
-#Y = isMap.fit_transform(scaled_dataset)
 
-cluster_dataset = dataset_np
-cluster_anno = window_anno
-
-kmeans = KMeans(n_clusters = n_clusters)
-kmeans.fit(cluster_dataset)
-labels = kmeans.predict(cluster_dataset)
-
-cross_section = [[0 for _ in range(3)] for _ in range(n_clusters)]
-for lab,true in zip(labels,cluster_anno):
-    cross_section[int(lab)][index_dict[true]]+=1
-
-for entry in cross_section:
-    print(entry)
 #plt.scatter([int(x) for x in labels],[index_dict[x] for x in anno_list])
 #plt.show()

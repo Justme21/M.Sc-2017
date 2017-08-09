@@ -63,7 +63,7 @@ class DrivingLearner():
 
         #First part of the state will be the last look_back-1 states we were in
         #state += list(self.prev_acts[1:])
-        state += self.prev_acts[-2:]
+        #state += self.prev_acts[-2:]
         #state += self.prev_acts[-1] #only include the last action performed. Less information than was used to generate the data       
 
         #Binary values for the entries in the state relating to acceleration  
@@ -74,19 +74,19 @@ class DrivingLearner():
 
         #The values for car position and road width are all
         # in the 1.5-3 region
-        for i in [6,8]:
-            state.append(int(cur_state[i]))
+        #for i in [6,8]:
+        #    state.append(int(cur_state[i]))
 
         #Distance to car in front can be -1 which should be a separate state
-        state.append(min(int(cur_state[9]),int(cur_state[9]/20))) #dist to car
+        #state.append(min(int(cur_state[9]),int(cur_state[9]/20))) #dist to car
         #state.append(min(int(cur_state[10]),int(cur_state[10]/10))) #time to collision
         #state.append(int(cur_state[11])) #number of cars on road
-        state.append(int(cur_state[12]/40)) #GPS-speed
+        #state.append(int(cur_state[12]/40)) #GPS-speed
 
         #Relative variables
         for i in range(3):
             state.append((cur_state[i]-self.state_copy[i])>0)
-        state.append((cur_state[1]-self.state_copy[1])>0)
+        #state.append((cur_state[1]-self.state_copy[1])>0)
 
         #Ratio of distance from left over distance from right
         #There are issues with this since the readings are approx
