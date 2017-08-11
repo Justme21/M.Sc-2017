@@ -74,8 +74,8 @@ class DrivingLearner():
 
         #The values for car position and road width are all
         # in the 1.5-3 region
-        #for i in [6,8]:
-        #    state.append(int(cur_state[i]))
+        for i in [6,8]:
+            state.append(int(cur_state[i]))
 
         #Distance to car in front can be -1 which should be a separate state
         #state.append(min(int(cur_state[9]),int(cur_state[9]/20))) #dist to car
@@ -84,19 +84,19 @@ class DrivingLearner():
         #state.append(int(cur_state[12]/40)) #GPS-speed
 
         #Relative variables
-        for i in range(3):
-            state.append((cur_state[i]-self.state_copy[i])>0)
+        #for i in range(3):
+        #    state.append((cur_state[i]-self.state_copy[i])>0)
         #state.append((cur_state[1]-self.state_copy[1])>0)
 
         #Ratio of distance from left over distance from right
         #There are issues with this since the readings are approx
         #Might not be worth keeping
-        #z_t = cur_state[6]
-        #z_l = (cur_state[8]/2)+z_t-(self.car_width/2)
-        #z_r = (cur_state[8]/2)-z_t-(self.car_width/2)
-        #if z_l == 0: z_l = .001
-        #if z_r == 0: z_r = .001
-        #state.append(int((z_l/z_r)))
+        z_t = cur_state[6]
+        z_l = (cur_state[8]/2)+z_t-(self.car_width/2)
+        z_r = (cur_state[8]/2)-z_t-(self.car_width/2)
+        if z_l == 0: z_l = .001
+        if z_r == 0: z_r = .001
+        state.append(int((z_l/z_r)))
         
         #Return tuple since tuples can be used as keys for dictionaries
         return tuple(state)    
@@ -119,7 +119,7 @@ class DrivingLearner():
         self.state_copy = [] #Copy of state input used to generate relative state values
 
         #Hard-coded car width
-        self.car_width = 1.75
+        self.car_width = 1.84
 
         self.random_choice = 0
     
